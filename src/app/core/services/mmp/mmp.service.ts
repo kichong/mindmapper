@@ -160,22 +160,18 @@ export class MmpService {
      * Add a node in the mind mmp.
      */
     public addNode (properties: any = {}) {
-        const selected = this.selectNode()
-        const settings = this.settingsService.getCachedSettings()
+        const nodeProperties = this.prepareNodeProperties(properties)
 
-        if (selected.colors.branch) {
-            properties.colors = {
-                branch: selected.colors.branch
-            }
-        } else if (settings.mapOptions.autoBranchColors === true) {
-            const children = this.nodeChildren().length
+        this.currentMap.addNode(nodeProperties)
+    }
 
-            properties.colors = {
-                branch: this.branchColors[children % this.branchColors.length]
-            }
-        }
+    /**
+     * Add a child node to the node with the provided id.
+     */
+    public addChildNode (parentId: string, properties: any = {}) {
+        const nodeProperties = this.prepareNodeProperties(properties, parentId)
 
-        this.currentMap.addNode(properties)
+        this.currentMap.addNode(nodeProperties, parentId)
     }
 
     /**
@@ -336,6 +332,69 @@ export class MmpService {
     public setCurrentMap (id: string) {
         this.currentMap = this.maps.get(id)
         this.currentId = id
+    }
+
+    /**
+     * Merge the provided properties with the defaults needed for the new node.
+     * If a parent is specified we reuse its branch color or pick one automatically.
+     */
+    private prepareNodeProperties (properties: any = {}, parentId?: string) {
+        const settings = this.settingsService.getCachedSettings()
+        const preparedProperties: any = {
+            ...properties
+        }
+
+        const parentNode = parentId
+            ? this.findNodeInCurrentSnapshot(parentId)
+            : this.selectNode()
+
+        if (!parentNode) {
+            return preparedProperties
+        }
+
+        const branchColor = parentNode.colors && parentNode.colors.branch
+
+        if (branchColor) {
+            preparedProperties.colors = {
+                ...(preparedProperties.colors || {}),
+                branch: branchColor
+            }
+        } else if (settings.mapOptions && settings.mapOptions.autoBranchColors === true) {
+            const children = parentId
+                ? this.currentMap.nodeChildren(parentId)
+                : this.nodeChildren()
+            const childCount = Array.isArray(children) ? children.length : 0
+
+            preparedProperties.colors = {
+                ...(preparedProperties.colors || {}),
+                branch: this.branchColors[childCount % this.branchColors.length]
+            }
+        }
+
+        return preparedProperties
+    }
+
+    /**
+     * Return the node data from the latest snapshot saved in history.
+     */
+    private findNodeInCurrentSnapshot (nodeId: string) {
+        const history = this.currentMap.history()
+
+        if (!history || typeof history.index !== 'number' || !Array.isArray(history.snapshots)) {
+            return null
+        }
+
+        if (history.index < 0 || history.index >= history.snapshots.length) {
+            return null
+        }
+
+        const snapshot = history.snapshots[history.index]
+
+        if (!Array.isArray(snapshot)) {
+            return null
+        }
+
+        return snapshot.find((node) => node.id === nodeId) || null
     }
 
 }
