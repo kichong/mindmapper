@@ -23,9 +23,11 @@ export default function App() {
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
   const dragStateRef = useRef<DragState>(null)
   const {
-    state: { nodes, selectedNodeId },
+    state: { nodes, selectedNodeId, history },
     dispatch,
   } = useMindMap()
+
+  const { past, future } = history
 
   const nodesRef = useRef(nodes)
   const selectedNodeRef = useRef(selectedNodeId)
@@ -214,7 +216,7 @@ export default function App() {
     }
   }, [dispatch, resizeCanvas])
 
-  const handleAddChild = () => {
+  const handleAddChild = useCallback(() => {
     if (nodes.length === 0) {
       return
     }
@@ -251,14 +253,94 @@ export default function App() {
         color: nodeColor,
       },
     })
-  }
+  }, [dispatch, nodes, selectedNodeId])
+
+  const handleDeleteNode = useCallback(() => {
+    if (!selectedNodeId) {
+      return
+    }
+
+    const target = nodes.find((node) => node.id === selectedNodeId)
+    if (!target || target.parentId === null) {
+      return
+    }
+
+    dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
+  }, [dispatch, nodes, selectedNodeId])
+
+  const handleUndo = useCallback(() => {
+    if (past.length === 0) {
+      return
+    }
+    dispatch({ type: 'UNDO' })
+  }, [dispatch, past])
+
+  const handleRedo = useCallback(() => {
+    if (future.length === 0) {
+      return
+    }
+    dispatch({ type: 'REDO' })
+  }, [dispatch, future])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+      const metaOrCtrl = event.metaKey || event.ctrlKey
+
+      if (metaOrCtrl && !event.shiftKey && key === 'z') {
+        event.preventDefault()
+        handleUndo()
+        return
+      }
+
+      if ((metaOrCtrl && (key === 'y' || (event.shiftKey && key === 'z')))) {
+        event.preventDefault()
+        handleRedo()
+        return
+      }
+
+      if (key === 'enter') {
+        event.preventDefault()
+        handleAddChild()
+        return
+      }
+
+      if (key === 'delete' || key === 'backspace') {
+        event.preventDefault()
+        handleDeleteNode()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleAddChild, handleDeleteNode, handleRedo, handleUndo])
+
+  const canDelete = Boolean(
+    selectedNodeId && nodes.some((node) => node.id === selectedNodeId && node.parentId !== null),
+  )
+  const canUndo = past.length > 0
+  const canRedo = future.length > 0
 
   return (
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className="mindmap-toolbar">
-        <button type="button" onClick={handleAddChild}>
-          Add child node
+        <button type="button" onClick={handleAddChild} title="Enter">
+          Add child
+        </button>
+        <button type="button" onClick={handleDeleteNode} disabled={!canDelete} title="Delete or Backspace">
+          Delete
+        </button>
+        <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
+          Undo
+        </button>
+        <button type="button" onClick={handleRedo} disabled={!canRedo} title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z">
+          Redo
         </button>
       </div>
     </div>
