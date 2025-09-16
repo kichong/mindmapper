@@ -1,5 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useMemo, useReducer, type Dispatch } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  type Dispatch,
+} from 'react'
+
 
 export interface MindMapNode {
   id: string
@@ -57,6 +65,81 @@ const initialState: MindMapState = {
     past: [],
     future: [],
   },
+}
+
+const STORAGE_KEY = 'mindmapper:snapshot'
+
+function isMindMapNode(value: unknown): value is MindMapNode {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const node = value as Partial<MindMapNode>
+  if (typeof node.id !== 'string') {
+    return false
+  }
+
+  if (!(typeof node.parentId === 'string' || node.parentId === null)) {
+    return false
+  }
+
+  if (typeof node.text !== 'string') {
+    return false
+  }
+
+  if (typeof node.x !== 'number' || typeof node.y !== 'number') {
+    return false
+  }
+
+  if (typeof node.color !== 'string') {
+    return false
+  }
+
+  return true
+}
+
+function loadPersistedState(): MindMapState {
+  if (typeof window === 'undefined') {
+    return initialState
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return initialState
+    }
+
+    const parsed = JSON.parse(raw) as {
+      nodes?: unknown
+      selectedNodeId?: unknown
+    }
+
+    if (!Array.isArray(parsed.nodes)) {
+      return initialState
+    }
+
+    const nodes = parsed.nodes.filter(isMindMapNode)
+    if (nodes.length === 0) {
+      return initialState
+    }
+
+    const selectedNodeId =
+      typeof parsed.selectedNodeId === 'string' && nodes.some((node) => node.id === parsed.selectedNodeId)
+        ? parsed.selectedNodeId
+        : nodes[0]?.id ?? null
+
+    return {
+      nodes: nodes.map((node) => ({ ...node })),
+      selectedNodeId,
+      history: {
+        past: [],
+        future: [],
+      },
+    }
+  } catch (error) {
+    console.error('Failed to load persisted mind map state', error)
+    return initialState
+  }
 }
 
 function cloneNodes(nodes: MindMapNode[]) {
@@ -200,8 +283,25 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
 }
 
 export function MindMapProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(mindMapReducer, initialState)
+  const [state, dispatch] = useReducer(mindMapReducer, undefined, loadPersistedState)
   const value = useMemo(() => ({ state, dispatch }), [state])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const payload = JSON.stringify({
+      nodes: state.nodes,
+      selectedNodeId: state.selectedNodeId,
+    })
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, payload)
+    } catch (error) {
+      console.error('Failed to persist mind map state', error)
+    }
+  }, [state.nodes, state.selectedNodeId])
 
   return <MindMapContext.Provider value={value}>{children}</MindMapContext.Provider>
 }
