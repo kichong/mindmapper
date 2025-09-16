@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import './App.css'
+import { useMindMap } from './state/MindMapContext'
 
 const NODE_RADIUS = 40
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const { state } = useMindMap()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -17,22 +19,24 @@ export default function App() {
       return
     }
 
-    const drawSeed = (width: number, height: number) => {
+    const drawNodes = (width: number, height: number) => {
       context.clearRect(0, 0, width, height)
 
-      const centerX = width / 2
-      const centerY = height / 2
+      Object.values(state.nodes).forEach((node) => {
+        const x = width / 2 + node.x
+        const y = height / 2 + node.y
 
-      context.fillStyle = '#4f46e5'
-      context.beginPath()
-      context.arc(centerX, centerY, NODE_RADIUS, 0, Math.PI * 2)
-      context.fill()
+        context.fillStyle = '#4f46e5'
+        context.beginPath()
+        context.arc(x, y, NODE_RADIUS, 0, Math.PI * 2)
+        context.fill()
 
-      context.fillStyle = '#ffffff'
-      context.font = '16px Inter, system-ui, sans-serif'
-      context.textAlign = 'center'
-      context.textBaseline = 'middle'
-      context.fillText('Root', centerX, centerY)
+        context.fillStyle = '#ffffff'
+        context.font = '16px Inter, system-ui, sans-serif'
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillText(node.text, x, y)
+      })
     }
 
     const resizeCanvas = () => {
@@ -45,7 +49,7 @@ export default function App() {
       canvas.style.width = `${cssWidth}px`
       canvas.style.height = `${cssHeight}px`
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      drawSeed(cssWidth, cssHeight)
+      drawNodes(cssWidth, cssHeight)
     }
 
     // Draw once on mount and keep the canvas responsive on resize
@@ -55,7 +59,7 @@ export default function App() {
     return () => {
       window.removeEventListener('resize', resizeCanvas)
     }
-  }, [])
+  }, [state.nodes])
 
   return <canvas ref={canvasRef} className="mindmap-canvas" />
 }
