@@ -17,8 +17,7 @@ export default function App() {
       return
     }
 
-    const drawSeed = () => {
-      const { width, height } = canvas
+    const drawSeed = (width: number, height: number) => {
       context.clearRect(0, 0, width, height)
 
       const centerX = width / 2
@@ -38,12 +37,15 @@ export default function App() {
 
     const resizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1
-      canvas.width = window.innerWidth * dpr
-      canvas.height = window.innerHeight * dpr
-      canvas.style.width = `${window.innerWidth}px`
-      canvas.style.height = `${window.innerHeight}px`
+      const cssWidth = window.innerWidth
+      const cssHeight = window.innerHeight
+
+      canvas.width = cssWidth * dpr
+      canvas.height = cssHeight * dpr
+      canvas.style.width = `${cssWidth}px`
+      canvas.style.height = `${cssHeight}px`
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      drawSeed()
+      drawSeed(cssWidth, cssHeight)
     }
 
     // Draw once on mount and keep the canvas responsive on resize
