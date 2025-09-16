@@ -1,0 +1,8 @@
+.mindmap-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: grab;
+  touch-action: none;
+  background: radial-gradient(circle at center, #4f46e515, #0f172a 85%);
+}
