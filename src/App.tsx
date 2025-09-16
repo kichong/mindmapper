@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { useMindMap } from './state/MindMapContext'
+import { useCallback, useEffect, useRef, type ChangeEvent } from 'react'
+import { type MindMapNode, useMindMap } from './state/MindMapContext'
 import './App.css'
 
 const NODE_RADIUS = 40
@@ -22,6 +22,7 @@ export default function App() {
   const contextRef = useRef<CanvasRenderingContext2D | null>(null)
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
   const dragStateRef = useRef<DragState>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const {
     state: { nodes, selectedNodeId, history },
     dispatch,
@@ -320,6 +321,110 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleAddChild, handleDeleteNode, handleRedo, handleUndo])
 
+  const handleExportJson = useCallback(() => {
+    const payload = JSON.stringify(
+      {
+        nodes: nodes.map((node) => ({ ...node })),
+        exportedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )
+
+    const blob = new Blob([payload], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'mindmap.json'
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [nodes])
+
+  const handleExportPng = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        return
+      }
+
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'mindmap.png'
+      anchor.click()
+      URL.revokeObjectURL(url)
+    })
+  }, [])
+
+  const sanitizeImportedNodes = useCallback((value: unknown) => {
+    if (!Array.isArray(value)) {
+      return null
+    }
+
+    const sanitized = value
+      .filter((item): item is MindMapNode => {
+        if (!item || typeof item !== 'object') {
+          return false
+        }
+        const node = item as Partial<MindMapNode>
+        return (
+          typeof node.id === 'string' &&
+          (typeof node.parentId === 'string' || node.parentId === null) &&
+          typeof node.text === 'string' &&
+          typeof node.x === 'number' &&
+          typeof node.y === 'number'
+        )
+      })
+      .map((node) => ({
+        ...node,
+        color: typeof node.color === 'string' ? node.color : '#4f46e5',
+      }))
+
+    if (sanitized.length === 0) {
+      return null
+    }
+
+    return sanitized
+  }, [])
+
+  const handleFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) {
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result)) as { nodes?: unknown }
+          const importedNodes = sanitizeImportedNodes(parsed.nodes)
+
+          if (!importedNodes) {
+            window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
+            return
+          }
+
+          dispatch({ type: 'IMPORT', nodes: importedNodes })
+        } catch (error) {
+          console.error('Failed to import mind map', error)
+          window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
+        }
+      }
+      reader.readAsText(file)
+      event.target.value = ''
+    },
+    [dispatch, sanitizeImportedNodes],
+  )
+
+  const handleImportJson = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
   const canDelete = Boolean(
     selectedNodeId && nodes.some((node) => node.id === selectedNodeId && node.parentId !== null),
   )
@@ -342,6 +447,22 @@ export default function App() {
         <button type="button" onClick={handleRedo} disabled={!canRedo} title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z">
           Redo
         </button>
+        <button type="button" onClick={handleExportJson} title="Download JSON copy">
+          Export JSON
+        </button>
+        <button type="button" onClick={handleImportJson} title="Load from JSON file">
+          Import JSON
+        </button>
+        <button type="button" onClick={handleExportPng} title="Download PNG image">
+          Export PNG
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
       </div>
     </div>
   )
