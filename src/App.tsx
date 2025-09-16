@@ -6,8 +6,14 @@ const NODE_RADIUS = 40
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const dragStateRef = useRef<{
+    nodeId: string
+    offsetX: number
+    offsetY: number
+  } | null>(null)
   const {
-    state: { nodes },
+    state: { nodes, selectedNodeId },
+    dispatch,
   } = useMindMap()
 
   useEffect(() => {
@@ -36,12 +42,83 @@ export default function App() {
         context.arc(nodeX, nodeY, NODE_RADIUS, 0, Math.PI * 2)
         context.fill()
 
+        if (node.id === selectedNodeId) {
+          context.lineWidth = 4
+          context.strokeStyle = '#f97316'
+          context.stroke()
+        }
+
         context.fillStyle = '#ffffff'
         context.font = '16px Inter, system-ui, sans-serif'
         context.textAlign = 'center'
         context.textBaseline = 'middle'
         context.fillText(node.text, nodeX, nodeY)
       })
+    }
+
+    const getCanvasPoint = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      }
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const { x, y, width, height } = getCanvasPoint(event)
+      const centerX = width / 2
+      const centerY = height / 2
+
+      const hitNode = [...nodes]
+        .reverse()
+        .find((node) => {
+          const nodeX = centerX + node.x
+          const nodeY = centerY + node.y
+          const distance = Math.hypot(x - nodeX, y - nodeY)
+          return distance <= NODE_RADIUS
+        })
+
+      if (hitNode) {
+        dragStateRef.current = {
+          nodeId: hitNode.id,
+          offsetX: x - (centerX + hitNode.x),
+          offsetY: y - (centerY + hitNode.y),
+        }
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        canvas.setPointerCapture(event.pointerId)
+        event.preventDefault()
+        return
+      }
+
+      dragStateRef.current = null
+      dispatch({ type: 'SELECT_NODE', nodeId: null })
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current
+      if (!dragState) {
+        return
+      }
+
+      const { x, y, width, height } = getCanvasPoint(event)
+      const centerX = width / 2
+      const centerY = height / 2
+
+      dispatch({
+        type: 'MOVE_NODE',
+        nodeId: dragState.nodeId,
+        x: x - centerX - dragState.offsetX,
+        y: y - centerY - dragState.offsetY,
+      })
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (dragStateRef.current) {
+        canvas.releasePointerCapture(event.pointerId)
+        dragStateRef.current = null
+      }
     }
 
     const resizeCanvas = () => {
@@ -60,11 +137,19 @@ export default function App() {
     // Draw once on mount and keep the canvas responsive on resize
     resizeCanvas()
     window.addEventListener('resize', resizeCanvas)
+    canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('pointermove', handlePointerMove)
+    canvas.addEventListener('pointerup', handlePointerUp)
+    canvas.addEventListener('pointercancel', handlePointerUp)
 
     return () => {
       window.removeEventListener('resize', resizeCanvas)
+      canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('pointermove', handlePointerMove)
+      canvas.removeEventListener('pointerup', handlePointerUp)
+      canvas.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [nodes])
+  }, [dispatch, nodes, selectedNodeId])
 
   return <canvas ref={canvasRef} className="mindmap-canvas" />
 }
