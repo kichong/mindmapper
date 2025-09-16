@@ -8,6 +8,7 @@ import {
   type Dispatch,
 } from 'react'
 
+
 export interface MindMapNode {
   id: string
   parentId: string | null

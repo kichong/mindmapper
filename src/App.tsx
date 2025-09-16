@@ -137,6 +137,7 @@ export default function App() {
     contextRef.current = context
     resizeCanvas()
 
+
     const getCanvasPoint = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       return {
@@ -157,6 +158,7 @@ export default function App() {
           const nodeX = centerX + node.x
           const nodeY = centerY + node.y
           return Math.hypot(x - nodeX, y - nodeY) <= NODE_RADIUS
+
         })
 
       if (hitNode) {
@@ -184,6 +186,7 @@ export default function App() {
 
       const { x, y } = getCanvasPoint(event)
       const { width, height } = sizeRef.current
+
       const centerX = width / 2
       const centerY = height / 2
 
@@ -201,6 +204,7 @@ export default function App() {
         dragStateRef.current = null
       }
     }
+
 
     window.addEventListener('resize', resizeCanvas)
     canvas.addEventListener('pointerdown', handlePointerDown)
