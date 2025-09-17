@@ -19,20 +19,20 @@
   top: 1.25rem;
   left: 1.25rem;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.7);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1.25rem;
+  background: rgba(15, 23, 42, 0.78);
   color: #f8fafc;
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
 }
 
 .mindmap-toolbar button {
-  padding: 0.35rem 0.9rem;
-  border-radius: 9999px;
+  padding: 0.45rem 1rem;
+  border-radius: 0.85rem;
   border: none;
   font-size: 0.95rem;
   font-weight: 600;
@@ -59,6 +59,79 @@
   transform: none;
 }
 
+.mindmap-toolbar__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.mindmap-toolbar__row--editors {
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.mindmap-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mindmap-toolbar__io {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mindmap-toolbar__export {
+  position: relative;
+  display: flex;
+}
+
+.mindmap-toolbar__io-button {
+  background: #38bdf8;
+  color: #0f172a;
+  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.35);
+}
+
+.mindmap-toolbar__io-button:hover {
+  box-shadow: 0 8px 22px rgba(14, 165, 233, 0.45);
+}
+
+.mindmap-toolbar__export-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.55);
+  min-width: 12rem;
+  z-index: 10;
+}
+
+.mindmap-toolbar__export-menu button {
+  background: rgba(226, 232, 240, 0.92);
+  color: #0f172a;
+  box-shadow: none;
+  width: 100%;
+}
+
+.mindmap-toolbar__export-menu button:hover {
+  transform: none;
+  box-shadow: none;
+  background: rgba(241, 245, 249, 0.95);
+}
+
+.mindmap-toolbar__export-menu button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .mindmap-toolbar__text-editor {
   display: flex;
   align-items: center;
@@ -66,6 +139,7 @@
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;
   background: rgba(15, 23, 42, 0.55);
+  flex: 1 1 16rem;
 }
 
 .mindmap-toolbar__text-editor span {
@@ -106,10 +180,10 @@
   gap: 0.85rem;
   padding: 0.9rem 1rem;
   border-radius: 1.25rem;
-  background: rgba(15, 23, 42, 0.75);
-  color: #f8fafc;
+  background: rgba(226, 232, 240, 0.88);
+  color: #1f2937;
   backdrop-filter: blur(12px);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 18px 40px rgba(148, 163, 184, 0.45);
   z-index: 5;
 }
 
@@ -130,23 +204,23 @@
 .mindmap-navigation button {
   width: 100%;
   height: 100%;
-  border-radius: 9999px;
+  border-radius: 0.9rem;
   border: none;
-  color: #0f172a;
-  background: #facc15;
+  color: #111827;
+  background: linear-gradient(145deg, #f8fafc, #cbd5f5);
   font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(250, 204, 21, 0.35);
+  box-shadow: 0 10px 24px rgba(100, 116, 139, 0.35);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 .mindmap-navigation button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgba(250, 204, 21, 0.45);
+  box-shadow: 0 12px 28px rgba(100, 116, 139, 0.45);
 }
 
 .mindmap-navigation button:active {
@@ -171,10 +245,10 @@
   gap: 0.6rem;
   padding: 0.45rem 0.75rem;
   border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(203, 213, 225, 0.9);
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e2e8f0;
+  color: #0f172a;
 }
 
 .mindmap-navigation__zoom span {
@@ -186,5 +260,58 @@
   width: 2.4rem;
   height: 2.4rem;
   font-size: 1.2rem;
+  box-shadow: 0 4px 10px rgba(100, 116, 139, 0.3);
+  background: linear-gradient(145deg, #f1f5f9, #cbd5f5);
+}
+
+.mindmap-actions {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.25rem;
+  background: rgba(76, 29, 149, 0.78);
+  color: #ede9fe;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 40px rgba(76, 29, 149, 0.45);
+  z-index: 5;
+}
+
+.mindmap-actions__row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.mindmap-actions button {
+  flex: 1 1 auto;
+  padding: 0.5rem 1rem;
+  border-radius: 0.85rem;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: rgba(237, 233, 254, 0.92);
+  color: #4c1d95;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 8px 22px rgba(79, 70, 229, 0.3);
+}
+
+.mindmap-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(79, 70, 229, 0.4);
+}
+
+.mindmap-actions button:active {
+  transform: translateY(0);
   box-shadow: none;
+}
+
+.mindmap-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }

@@ -48,7 +48,7 @@ type MindMapAction =
   | { type: 'UPDATE_NODE'; nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }
   | { type: 'DELETE_NODE'; nodeId: string }
   | { type: 'MOVE_NODE'; nodeId: string; x: number; y: number }
-  | { type: 'CLEAR_CHILDREN' }
+  | { type: 'CLEAR_ALL' }
   | { type: 'ADD_ANNOTATION'; annotation: MindMapAnnotation }
   | { type: 'UPDATE_ANNOTATION'; annotationId: string; updates: Partial<Omit<MindMapAnnotation, 'id'>> }
   | { type: 'MOVE_ANNOTATION'; annotationId: string; x: number; y: number }
@@ -298,16 +298,34 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       )
       return commitState(state, { nodes: nextNodes })
     }
-    case 'CLEAR_CHILDREN': {
-      const roots = state.nodes.filter((node) => node.parentId === null)
-      if (roots.length === 0) {
+    case 'CLEAR_ALL': {
+      const hasExtraNodes =
+        state.nodes.length !== 1 ||
+        state.nodes[0]?.id !== ROOT_NODE_ID ||
+        state.nodes[0]?.parentId !== null ||
+        state.nodes[0]?.text !== 'Root' ||
+        state.nodes[0]?.x !== 0 ||
+        state.nodes[0]?.y !== 0 ||
+        state.nodes[0]?.color !== '#4f46e5'
+
+      if (!hasExtraNodes && state.annotations.length === 0) {
         return state
       }
 
-      const nextNodes = roots.map((node) => ({ ...node }))
+      const resetRoot: MindMapNode = {
+        id: ROOT_NODE_ID,
+        parentId: null,
+        text: 'Root',
+        x: 0,
+        y: 0,
+        color: '#4f46e5',
+      }
+
       return commitState(state, {
-        nodes: nextNodes,
-        selectedNodeId: roots[0].id,
+        nodes: [resetRoot],
+        annotations: [],
+        selectedNodeId: ROOT_NODE_ID,
+        selectedAnnotationId: null,
       })
     }
     case 'ADD_ANNOTATION': {

@@ -141,6 +141,8 @@ export default function App() {
   }))
   const viewRef = useRef(viewTransform)
   const hasAutoCenteredRef = useRef(false)
+  const exportMenuRef = useRef<HTMLDivElement | null>(null)
+  const [isExportMenuOpen, setExportMenuOpen] = useState(false)
 
   const measureAnnotation = useCallback((annotation: MindMapAnnotation) => {
     const context = contextRef.current
@@ -170,6 +172,14 @@ export default function App() {
   useEffect(() => {
     setAnnotationEditText(selectedAnnotation?.text ?? '')
   }, [selectedAnnotation?.id, selectedAnnotation?.text])
+
+  const closeExportMenu = useCallback(() => {
+    setExportMenuOpen(false)
+  }, [])
+
+  const toggleExportMenu = useCallback(() => {
+    setExportMenuOpen((previous) => !previous)
+  }, [])
 
   const drawScene = useCallback(() => {
     const context = contextRef.current
@@ -314,6 +324,32 @@ export default function App() {
     selectedAnnotationRef.current = selectedAnnotationId
     drawScene()
   }, [annotations, nodes, selectedAnnotationId, selectedNodeId, drawScene])
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const menu = exportMenuRef.current
+      if (!menu) {
+        return
+      }
+
+      if (event.target instanceof Node && !menu.contains(event.target)) {
+        closeExportMenu()
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeExportMenu()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeExportMenu])
 
   const adjustZoom = useCallback((factor: number, pivot?: { screenX: number; screenY: number }) => {
     setViewTransform((previous) => {
@@ -680,14 +716,39 @@ export default function App() {
     dispatch({ type: 'REDO' })
   }, [dispatch, future])
 
-  const hasChildNodes = useMemo(() => nodes.some((node) => node.parentId !== null), [nodes])
+  const isPristineState = useMemo(() => {
+    if (annotations.length > 0) {
+      return false
+    }
 
-  const handleClearChildren = useCallback(() => {
-    if (!hasChildNodes) {
+    if (nodes.length !== 1) {
+      return false
+    }
+
+    const [rootNode] = nodes
+    if (!rootNode) {
+      return true
+    }
+
+    return (
+      rootNode.id === 'root' &&
+      rootNode.parentId === null &&
+      rootNode.text === 'Root' &&
+      rootNode.x === 0 &&
+      rootNode.y === 0 &&
+      rootNode.color === '#4f46e5'
+    )
+  }, [annotations, nodes])
+
+  const canClear = !isPristineState
+
+  const handleClearAll = useCallback(() => {
+    if (!canClear) {
       return
     }
-    dispatch({ type: 'CLEAR_CHILDREN' })
-  }, [dispatch, hasChildNodes])
+
+    dispatch({ type: 'CLEAR_ALL' })
+  }, [canClear, dispatch])
 
   const panByPixels = useCallback((deltaX: number, deltaY: number) => {
     setViewTransform((previous) => {
@@ -809,6 +870,7 @@ export default function App() {
   ])
 
   const handleExportJson = useCallback(() => {
+    closeExportMenu()
     const payload = JSON.stringify(
       {
         nodes: nodes.map((node) => ({ ...node })),
@@ -826,9 +888,10 @@ export default function App() {
     anchor.download = 'mindmap.json'
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [annotations, nodes])
+  }, [annotations, closeExportMenu, nodes])
 
   const handleExportPng = useCallback(() => {
+    closeExportMenu()
     const canvas = canvasRef.current
     if (!canvas) {
       return
@@ -846,7 +909,7 @@ export default function App() {
       anchor.click()
       URL.revokeObjectURL(url)
     })
-  }, [])
+  }, [closeExportMenu])
 
   const sanitizeImportedNodes = useCallback((value: unknown) => {
     if (!Array.isArray(value)) {
@@ -935,8 +998,9 @@ export default function App() {
   )
 
   const handleImportJson = useCallback(() => {
+    closeExportMenu()
     fileInputRef.current?.click()
-  }, [])
+  }, [closeExportMenu])
 
   const canDeleteNode = Boolean(selectedNode && selectedNode.parentId !== null)
   const canDeleteAnnotation = Boolean(selectedAnnotation)
@@ -983,69 +1047,79 @@ export default function App() {
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className="mindmap-toolbar">
-        <button type="button" onClick={handleAddChild} title="Enter">
-          Add child
-        </button>
-        <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
-          Add text
-        </button>
-        <label className="mindmap-toolbar__text-editor">
-          <span>Edit text</span>
-          <input
-            type="text"
-            value={editText}
-            onChange={handleNodeTextChange}
-            placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
-            disabled={!selectedNode}
-            aria-label="Selected node text"
-            className="mindmap-toolbar__text-input"
-          />
-        </label>
-        <label className="mindmap-toolbar__text-editor">
-          <span>Edit note</span>
-          <input
-            type="text"
-            value={annotationEditText}
-            onChange={handleAnnotationTextChange}
-            placeholder={
-              selectedAnnotation ? 'Type here to update the note' : 'Select a text note first'
-            }
-            disabled={!selectedAnnotation}
-            aria-label="Selected note text"
-            className="mindmap-toolbar__text-input"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={handleDeleteSelection}
-          disabled={!canDelete}
-          title="Delete or Backspace"
-        >
-          Delete
-        </button>
-        <button
-          type="button"
-          onClick={handleClearChildren}
-          disabled={!hasChildNodes}
-          title="Remove every node that has a parent"
-        >
-          Clear
-        </button>
-        <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
-          Undo
-        </button>
-        <button type="button" onClick={handleRedo} disabled={!canRedo} title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z">
-          Redo
-        </button>
-        <button type="button" onClick={handleExportJson} title="Download JSON copy">
-          Export JSON
-        </button>
-        <button type="button" onClick={handleImportJson} title="Load from JSON file">
-          Import JSON
-        </button>
-        <button type="button" onClick={handleExportPng} title="Download PNG image">
-          Export PNG
-        </button>
+        <div className="mindmap-toolbar__row">
+          <div className="mindmap-toolbar__actions">
+            <button type="button" onClick={handleAddChild} title="Enter">
+              Add child
+            </button>
+            <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
+              Add text
+            </button>
+          </div>
+          <div className="mindmap-toolbar__io">
+            <button
+              type="button"
+              onClick={handleImportJson}
+              title="Load from JSON file"
+              className="mindmap-toolbar__io-button"
+            >
+              Import
+            </button>
+            <div className="mindmap-toolbar__export" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={toggleExportMenu}
+                className="mindmap-toolbar__io-button"
+                aria-expanded={isExportMenuOpen}
+                aria-haspopup="true"
+                title="Download a copy of your map"
+              >
+                Export
+              </button>
+              {isExportMenuOpen ? (
+                <div className="mindmap-toolbar__export-menu" role="menu">
+                  <button type="button" onClick={handleExportJson} role="menuitem">
+                    Export JSON
+                  </button>
+                  <button type="button" onClick={handleExportPng} role="menuitem">
+                    Export PNG
+                  </button>
+                  <button type="button" disabled role="menuitem" title="PDF export is coming soon">
+                    Export PDF (coming soon)
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
+          <label className="mindmap-toolbar__text-editor">
+            <span>Edit node</span>
+            <input
+              type="text"
+              value={editText}
+              onChange={handleNodeTextChange}
+              placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
+              disabled={!selectedNode}
+              aria-label="Selected node text"
+              className="mindmap-toolbar__text-input"
+            />
+          </label>
+          <label className="mindmap-toolbar__text-editor">
+            <span>Edit text</span>
+            <input
+              type="text"
+              value={annotationEditText}
+              onChange={handleAnnotationTextChange}
+              placeholder={
+                selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
+              }
+              disabled={!selectedAnnotation}
+              aria-label="Selected text box content"
+              className="mindmap-toolbar__text-input"
+            />
+          </label>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -1053,6 +1127,39 @@ export default function App() {
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
+      </div>
+      <div className="mindmap-actions" role="group" aria-label="Edit commands">
+        <div className="mindmap-actions__row">
+          <button
+            type="button"
+            onClick={handleDeleteSelection}
+            disabled={!canDelete}
+            title="Delete or Backspace"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={handleClearAll}
+            disabled={!canClear}
+            title="Reset the canvas to a fresh root node"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="mindmap-actions__row">
+          <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={handleRedo}
+            disabled={!canRedo}
+            title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z"
+          >
+            Redo
+          </button>
+        </div>
       </div>
       <div className="mindmap-navigation" role="group" aria-label="Viewport navigation controls">
         <div className="mindmap-navigation__dpad">
