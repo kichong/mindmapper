@@ -468,8 +468,8 @@ export default function App() {
   const panByPixels = useCallback((deltaX: number, deltaY: number) => {
     setViewTransform((previous) => ({
       ...previous,
-      offsetX: previous.offsetX + deltaX,
-      offsetY: previous.offsetY + deltaY,
+      offsetX: previous.offsetX - deltaX,
+      offsetY: previous.offsetY - deltaY,
     }))
   }, [])
 
@@ -790,12 +790,12 @@ export default function App() {
           <div className="mindmap-navigation__spacer" aria-hidden="true" />
         </div>
         <div className="mindmap-navigation__zoom" aria-live="polite">
-          <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in (+)">
-            +
-          </button>
-          <span>{zoomPercentage}%</span>
           <button type="button" onClick={handleZoomOut} disabled={!canZoomOut} title="Zoom out (-)">
             −
+          </button>
+          <span>{zoomPercentage}%</span>
+          <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in (+)">
+            +
           </button>
         </div>
       </div>
