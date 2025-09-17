@@ -5,6 +5,17 @@ import './App.css'
 const NODE_RADIUS = 40
 const LINK_DISTANCE = 160
 const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
+const MIN_ZOOM = 0.5
+const MAX_ZOOM = 2.5
+const ZOOM_STEP = 1.2
+
+type ViewTransform = {
+  scale: number
+  offsetX: number
+  offsetY: number
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
 type DragState = {
   nodeId: string
@@ -39,6 +50,12 @@ export default function App() {
   )
 
   const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
+  const [viewTransform, setViewTransform] = useState<ViewTransform>(() => ({
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+  }))
+  const viewRef = useRef(viewTransform)
 
   useEffect(() => {
     setEditText(selectedNode?.text ?? '')
@@ -57,12 +74,17 @@ export default function App() {
 
     const nodesToDraw = nodesRef.current
     const selectedId = selectedNodeRef.current
+    const { scale, offsetX, offsetY } = viewRef.current
 
     context.clearRect(0, 0, width, height)
 
     const centerX = width / 2
     const centerY = height / 2
     const nodeMap = new Map(nodesToDraw.map((node) => [node.id, node]))
+
+    context.save()
+    context.translate(centerX + offsetX, centerY + offsetY)
+    context.scale(scale, scale)
 
     context.lineWidth = 2
     context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
@@ -78,14 +100,14 @@ export default function App() {
       }
 
       context.beginPath()
-      context.moveTo(centerX + parent.x, centerY + parent.y)
-      context.lineTo(centerX + node.x, centerY + node.y)
+      context.moveTo(parent.x, parent.y)
+      context.lineTo(node.x, node.y)
       context.stroke()
     })
 
     nodesToDraw.forEach((node) => {
-      const nodeX = centerX + node.x
-      const nodeY = centerY + node.y
+      const nodeX = node.x
+      const nodeY = node.y
 
       context.fillStyle = node.color || '#4f46e5'
       context.beginPath()
@@ -96,6 +118,8 @@ export default function App() {
         context.lineWidth = 4
         context.strokeStyle = '#f97316'
         context.stroke()
+        context.lineWidth = 2
+        context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
       }
 
       context.fillStyle = '#ffffff'
@@ -104,7 +128,14 @@ export default function App() {
       context.textBaseline = 'middle'
       context.fillText(node.text, nodeX, nodeY)
     })
+
+    context.restore()
   }, [])
+
+  useEffect(() => {
+    viewRef.current = viewTransform
+    drawScene()
+  }, [viewTransform, drawScene])
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -157,26 +188,31 @@ export default function App() {
       }
     }
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const getScenePoint = (event: PointerEvent) => {
       const { x, y } = getCanvasPoint(event)
       const { width, height } = sizeRef.current
+      const { scale, offsetX, offsetY } = viewRef.current
       const centerX = width / 2
       const centerY = height / 2
 
+      return {
+        x: (x - centerX - offsetX) / scale,
+        y: (y - centerY - offsetY) / scale,
+      }
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const scenePoint = getScenePoint(event)
+
       const hitNode = [...nodesRef.current]
         .reverse()
-        .find((node) => {
-          const nodeX = centerX + node.x
-          const nodeY = centerY + node.y
-          return Math.hypot(x - nodeX, y - nodeY) <= NODE_RADIUS
-
-        })
+        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= NODE_RADIUS)
 
       if (hitNode) {
         dragStateRef.current = {
           nodeId: hitNode.id,
-          offsetX: x - (centerX + hitNode.x),
-          offsetY: y - (centerY + hitNode.y),
+          offsetX: scenePoint.x - hitNode.x,
+          offsetY: scenePoint.y - hitNode.y,
         }
 
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
@@ -195,17 +231,13 @@ export default function App() {
         return
       }
 
-      const { x, y } = getCanvasPoint(event)
-      const { width, height } = sizeRef.current
-
-      const centerX = width / 2
-      const centerY = height / 2
+      const scenePoint = getScenePoint(event)
 
       dispatch({
         type: 'MOVE_NODE',
         nodeId: dragState.nodeId,
-        x: x - centerX - dragState.offsetX,
-        y: y - centerY - dragState.offsetY,
+        x: scenePoint.x - dragState.offsetX,
+        y: scenePoint.y - dragState.offsetY,
       })
     }
 
@@ -295,6 +327,50 @@ export default function App() {
     }
     dispatch({ type: 'REDO' })
   }, [dispatch, future])
+
+  const hasChildNodes = useMemo(() => nodes.some((node) => node.parentId !== null), [nodes])
+
+  const adjustZoom = useCallback((factor: number) => {
+    setViewTransform((previous) => {
+      const nextScale = clamp(previous.scale * factor, MIN_ZOOM, MAX_ZOOM)
+      if (nextScale === previous.scale) {
+        return previous
+      }
+
+      const worldCenterX = -previous.offsetX / previous.scale
+      const worldCenterY = -previous.offsetY / previous.scale
+
+      return {
+        scale: nextScale,
+        offsetX: -worldCenterX * nextScale,
+        offsetY: -worldCenterY * nextScale,
+      }
+    })
+  }, [])
+
+  const handleZoomIn = useCallback(() => {
+    adjustZoom(ZOOM_STEP)
+  }, [adjustZoom])
+
+  const handleZoomOut = useCallback(() => {
+    adjustZoom(1 / ZOOM_STEP)
+  }, [adjustZoom])
+
+  const handleResetView = useCallback(() => {
+    const rootNode = nodes.find((node) => node.parentId === null) ?? null
+    setViewTransform({
+      scale: 1,
+      offsetX: rootNode ? -rootNode.x : 0,
+      offsetY: rootNode ? -rootNode.y : 0,
+    })
+  }, [nodes])
+
+  const handleClearChildren = useCallback(() => {
+    if (!hasChildNodes) {
+      return
+    }
+    dispatch({ type: 'CLEAR_CHILDREN' })
+  }, [dispatch, hasChildNodes])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -441,6 +517,9 @@ export default function App() {
   const canDelete = Boolean(selectedNode && selectedNode.parentId !== null)
   const canUndo = past.length > 0
   const canRedo = future.length > 0
+  const canZoomIn = viewTransform.scale < MAX_ZOOM - 0.001
+  const canZoomOut = viewTransform.scale > MIN_ZOOM + 0.001
+  const zoomPercentage = Math.round(viewTransform.scale * 100)
 
   const handleNodeTextChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -465,6 +544,18 @@ export default function App() {
         <button type="button" onClick={handleAddChild} title="Enter">
           Add child
         </button>
+        <button type="button" onClick={handleZoomOut} disabled={!canZoomOut} title="Zoom out">
+          Zoom out
+        </button>
+        <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in">
+          Zoom in
+        </button>
+        <button type="button" onClick={handleResetView} title="Return to centered view">
+          Center view
+        </button>
+        <span className="mindmap-toolbar__zoom-indicator" aria-live="polite">
+          {zoomPercentage}%
+        </span>
         <label className="mindmap-toolbar__text-editor">
           <span>Edit text</span>
           <input
@@ -479,6 +570,14 @@ export default function App() {
         </label>
         <button type="button" onClick={handleDeleteNode} disabled={!canDelete} title="Delete or Backspace">
           Delete
+        </button>
+        <button
+          type="button"
+          onClick={handleClearChildren}
+          disabled={!hasChildNodes}
+          title="Remove every node that has a parent"
+        >
+          Clear child nodes
         </button>
         <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
           Undo

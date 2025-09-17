@@ -82,6 +82,15 @@
   font-size: 0.95rem;
 }
 
+.mindmap-toolbar__zoom-indicator {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
 .mindmap-toolbar__text-input:focus {
   outline: none;
   border-color: #facc15;

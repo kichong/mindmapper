@@ -34,6 +34,7 @@ type MindMapAction =
   | { type: 'UPDATE_NODE'; nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }
   | { type: 'DELETE_NODE'; nodeId: string }
   | { type: 'MOVE_NODE'; nodeId: string; x: number; y: number }
+  | { type: 'CLEAR_CHILDREN' }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'IMPORT'; nodes: MindMapNode[] }
@@ -214,6 +215,15 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
           : node,
       )
       return commitState(state, nextNodes)
+    }
+    case 'CLEAR_CHILDREN': {
+      const roots = state.nodes.filter((node) => node.parentId === null)
+      if (roots.length === 0) {
+        return state
+      }
+
+      const nextNodes = roots.map((node) => ({ ...node }))
+      return commitState(state, nextNodes, { selectedNodeId: roots[0].id })
     }
     case 'UNDO': {
       if (state.history.past.length === 0) {
