@@ -9,6 +9,7 @@ const MIN_ZOOM = 0.5
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
 const KEYBOARD_PAN_STEP = 80
+const AUTO_CENTER_PADDING = 160
 
 type ViewTransform = {
   scale: number
@@ -42,6 +43,50 @@ type CanvasSize = {
   height: number
 }
 
+function calculateFitView(nodes: MindMapNode[], size: CanvasSize): ViewTransform | null {
+  const { width, height } = size
+  if (nodes.length === 0 || width === 0 || height === 0) {
+    return null
+  }
+
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+
+  nodes.forEach((node) => {
+    minX = Math.min(minX, node.x - NODE_RADIUS)
+    maxX = Math.max(maxX, node.x + NODE_RADIUS)
+    minY = Math.min(minY, node.y - NODE_RADIUS)
+    maxY = Math.max(maxY, node.y + NODE_RADIUS)
+  })
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    return null
+  }
+
+  const paddedMinX = minX - AUTO_CENTER_PADDING
+  const paddedMaxX = maxX + AUTO_CENTER_PADDING
+  const paddedMinY = minY - AUTO_CENTER_PADDING
+  const paddedMaxY = maxY + AUTO_CENTER_PADDING
+
+  const contentWidth = Math.max(paddedMaxX - paddedMinX, 1)
+  const contentHeight = Math.max(paddedMaxY - paddedMinY, 1)
+
+  const scaleX = width / contentWidth
+  const scaleY = height / contentHeight
+  const nextScale = clamp(Math.min(scaleX, scaleY), MIN_ZOOM, MAX_ZOOM)
+
+  const centerX = (paddedMinX + paddedMaxX) / 2
+  const centerY = (paddedMinY + paddedMaxY) / 2
+
+  return {
+    scale: nextScale,
+    offsetX: -centerX * nextScale,
+    offsetY: -centerY * nextScale,
+  }
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const contextRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -70,6 +115,7 @@ export default function App() {
     offsetY: 0,
   }))
   const viewRef = useRef(viewTransform)
+  const hasAutoCenteredRef = useRef(false)
 
   useEffect(() => {
     setEditText(selectedNode?.text ?? '')
@@ -171,6 +217,14 @@ export default function App() {
 
     context.setTransform(dpr, 0, 0, dpr, 0, 0)
     drawScene()
+
+    if (!hasAutoCenteredRef.current) {
+      const fitTransform = calculateFitView(nodesRef.current, sizeRef.current)
+      if (fitTransform) {
+        hasAutoCenteredRef.current = true
+        setViewTransform(fitTransform)
+      }
+    }
   }, [drawScene])
 
   useEffect(() => {
@@ -181,6 +235,7 @@ export default function App() {
 
   const adjustZoom = useCallback((factor: number, pivot?: { screenX: number; screenY: number }) => {
     setViewTransform((previous) => {
+      hasAutoCenteredRef.current = true
       const nextScale = clamp(previous.scale * factor, MIN_ZOOM, MAX_ZOOM)
       if (nextScale === previous.scale) {
         return previous
@@ -220,11 +275,17 @@ export default function App() {
   }, [adjustZoom])
 
   const handleResetView = useCallback(() => {
-    const rootNode = nodes.find((node) => node.parentId === null) ?? null
+    const fitTransform = calculateFitView(nodes, sizeRef.current)
+    if (fitTransform) {
+      hasAutoCenteredRef.current = true
+      setViewTransform(fitTransform)
+      return
+    }
+
     setViewTransform({
       scale: 1,
-      offsetX: rootNode ? -rootNode.x : 0,
-      offsetY: rootNode ? -rootNode.y : 0,
+      offsetX: 0,
+      offsetY: 0,
     })
   }, [nodes])
 
@@ -353,11 +414,14 @@ export default function App() {
         interaction.moved = true
       }
 
-      setViewTransform((previous) => ({
-        ...previous,
-        offsetX: interaction.startOffsetX + deltaX,
-        offsetY: interaction.startOffsetY + deltaY,
-      }))
+      setViewTransform((previous) => {
+        hasAutoCenteredRef.current = true
+        return {
+          ...previous,
+          offsetX: interaction.startOffsetX + deltaX,
+          offsetY: interaction.startOffsetY + deltaY,
+        }
+      })
     }
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -466,11 +530,14 @@ export default function App() {
   }, [dispatch, hasChildNodes])
 
   const panByPixels = useCallback((deltaX: number, deltaY: number) => {
-    setViewTransform((previous) => ({
-      ...previous,
-      offsetX: previous.offsetX - deltaX,
-      offsetY: previous.offsetY - deltaY,
-    }))
+    setViewTransform((previous) => {
+      hasAutoCenteredRef.current = true
+      return {
+        ...previous,
+        offsetX: previous.offsetX - deltaX,
+        offsetY: previous.offsetY - deltaY,
+      }
+    })
   }, [])
 
   const handlePanUp = useCallback(() => {
