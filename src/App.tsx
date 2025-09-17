@@ -8,6 +8,7 @@ const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
+const KEYBOARD_PAN_STEP = 80
 
 type ViewTransform = {
   scale: number
@@ -17,11 +18,24 @@ type ViewTransform = {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
-type DragState = {
-  nodeId: string
-  offsetX: number
-  offsetY: number
-} | null
+type InteractionState =
+  | {
+      mode: 'node'
+      pointerId: number
+      nodeId: string
+      offsetX: number
+      offsetY: number
+    }
+  | {
+      mode: 'pan'
+      pointerId: number
+      startClientX: number
+      startClientY: number
+      startOffsetX: number
+      startOffsetY: number
+      moved: boolean
+    }
+  | null
 
 type CanvasSize = {
   width: number
@@ -32,7 +46,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const contextRef = useRef<CanvasRenderingContext2D | null>(null)
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
-  const dragStateRef = useRef<DragState>(null)
+  const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const {
     state: { nodes, selectedNodeId, history },
@@ -165,6 +179,55 @@ export default function App() {
     drawScene()
   }, [nodes, selectedNodeId, drawScene])
 
+  const adjustZoom = useCallback((factor: number, pivot?: { screenX: number; screenY: number }) => {
+    setViewTransform((previous) => {
+      const nextScale = clamp(previous.scale * factor, MIN_ZOOM, MAX_ZOOM)
+      if (nextScale === previous.scale) {
+        return previous
+      }
+
+      if (pivot) {
+        const { width, height } = sizeRef.current
+        const centerX = width / 2
+        const centerY = height / 2
+        const worldX = (pivot.screenX - centerX - previous.offsetX) / previous.scale
+        const worldY = (pivot.screenY - centerY - previous.offsetY) / previous.scale
+
+        return {
+          scale: nextScale,
+          offsetX: pivot.screenX - centerX - nextScale * worldX,
+          offsetY: pivot.screenY - centerY - nextScale * worldY,
+        }
+      }
+
+      const worldCenterX = -previous.offsetX / previous.scale
+      const worldCenterY = -previous.offsetY / previous.scale
+
+      return {
+        scale: nextScale,
+        offsetX: -worldCenterX * nextScale,
+        offsetY: -worldCenterY * nextScale,
+      }
+    })
+  }, [])
+
+  const handleZoomIn = useCallback(() => {
+    adjustZoom(ZOOM_STEP)
+  }, [adjustZoom])
+
+  const handleZoomOut = useCallback(() => {
+    adjustZoom(1 / ZOOM_STEP)
+  }, [adjustZoom])
+
+  const handleResetView = useCallback(() => {
+    const rootNode = nodes.find((node) => node.parentId === null) ?? null
+    setViewTransform({
+      scale: 1,
+      offsetX: rootNode ? -rootNode.x : 0,
+      offsetY: rootNode ? -rootNode.y : 0,
+    })
+  }, [nodes])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) {
@@ -179,8 +242,9 @@ export default function App() {
     contextRef.current = context
     resizeCanvas()
 
+    canvas.style.cursor = 'grab'
 
-    const getCanvasPoint = (event: PointerEvent) => {
+    const getCanvasPoint = (event: PointerEvent | WheelEvent) => {
       const rect = canvas.getBoundingClientRect()
       return {
         x: event.clientX - rect.left,
@@ -201,7 +265,30 @@ export default function App() {
       }
     }
 
+    const finishInteraction = (pointerId: number, shouldDeselect: boolean) => {
+      const interaction = interactionRef.current
+      if (!interaction || interaction.pointerId !== pointerId) {
+        return
+      }
+
+      if (interaction.mode === 'pan' && shouldDeselect && !interaction.moved) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+      }
+
+      interactionRef.current = null
+
+      if (canvas.hasPointerCapture(pointerId)) {
+        canvas.releasePointerCapture(pointerId)
+      }
+
+      canvas.style.cursor = 'grab'
+    }
+
     const handlePointerDown = (event: PointerEvent) => {
+      if (event.button === 2) {
+        return
+      }
+
       const scenePoint = getScenePoint(event)
 
       const hitNode = [...nodesRef.current]
@@ -209,7 +296,9 @@ export default function App() {
         .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= NODE_RADIUS)
 
       if (hitNode) {
-        dragStateRef.current = {
+        interactionRef.current = {
+          mode: 'node',
+          pointerId: event.pointerId,
           nodeId: hitNode.id,
           offsetX: scenePoint.x - hitNode.x,
           offsetY: scenePoint.y - hitNode.y,
@@ -217,52 +306,91 @@ export default function App() {
 
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
+        canvas.style.cursor = 'grabbing'
         event.preventDefault()
         return
       }
 
-      dragStateRef.current = null
-      dispatch({ type: 'SELECT_NODE', nodeId: null })
+      if (event.button === 0 || event.button === 1) {
+        interactionRef.current = {
+          mode: 'pan',
+          pointerId: event.pointerId,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startOffsetX: viewRef.current.offsetX,
+          startOffsetY: viewRef.current.offsetY,
+          moved: false,
+        }
+
+        canvas.setPointerCapture(event.pointerId)
+        canvas.style.cursor = 'grabbing'
+        event.preventDefault()
+      }
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current
-      if (!dragState) {
+      const interaction = interactionRef.current
+      if (!interaction) {
         return
       }
 
-      const scenePoint = getScenePoint(event)
+      if (interaction.mode === 'node') {
+        const scenePoint = getScenePoint(event)
 
-      dispatch({
-        type: 'MOVE_NODE',
-        nodeId: dragState.nodeId,
-        x: scenePoint.x - dragState.offsetX,
-        y: scenePoint.y - dragState.offsetY,
-      })
+        dispatch({
+          type: 'MOVE_NODE',
+          nodeId: interaction.nodeId,
+          x: scenePoint.x - interaction.offsetX,
+          y: scenePoint.y - interaction.offsetY,
+        })
+        return
+      }
+
+      const deltaX = event.clientX - interaction.startClientX
+      const deltaY = event.clientY - interaction.startClientY
+
+      if (!interaction.moved && Math.hypot(deltaX, deltaY) > 2) {
+        interaction.moved = true
+      }
+
+      setViewTransform((previous) => ({
+        ...previous,
+        offsetX: interaction.startOffsetX + deltaX,
+        offsetY: interaction.startOffsetY + deltaY,
+      }))
     }
 
     const handlePointerUp = (event: PointerEvent) => {
-      if (dragStateRef.current) {
-        canvas.releasePointerCapture(event.pointerId)
-        dragStateRef.current = null
-      }
+      finishInteraction(event.pointerId, true)
     }
 
+    const handlePointerCancel = (event: PointerEvent) => {
+      finishInteraction(event.pointerId, false)
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const { x, y } = getCanvasPoint(event)
+      const zoomFactor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP
+      adjustZoom(zoomFactor, { screenX: x, screenY: y })
+    }
 
     window.addEventListener('resize', resizeCanvas)
     canvas.addEventListener('pointerdown', handlePointerDown)
     canvas.addEventListener('pointermove', handlePointerMove)
     canvas.addEventListener('pointerup', handlePointerUp)
-    canvas.addEventListener('pointercancel', handlePointerUp)
+    canvas.addEventListener('pointercancel', handlePointerCancel)
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
 
     return () => {
       window.removeEventListener('resize', resizeCanvas)
       canvas.removeEventListener('pointerdown', handlePointerDown)
       canvas.removeEventListener('pointermove', handlePointerMove)
       canvas.removeEventListener('pointerup', handlePointerUp)
-      canvas.removeEventListener('pointercancel', handlePointerUp)
+      canvas.removeEventListener('pointercancel', handlePointerCancel)
+      canvas.removeEventListener('wheel', handleWheel)
     }
-  }, [dispatch, resizeCanvas])
+  }, [adjustZoom, dispatch, resizeCanvas])
 
   const handleAddChild = useCallback(() => {
     if (nodes.length === 0) {
@@ -330,47 +458,36 @@ export default function App() {
 
   const hasChildNodes = useMemo(() => nodes.some((node) => node.parentId !== null), [nodes])
 
-  const adjustZoom = useCallback((factor: number) => {
-    setViewTransform((previous) => {
-      const nextScale = clamp(previous.scale * factor, MIN_ZOOM, MAX_ZOOM)
-      if (nextScale === previous.scale) {
-        return previous
-      }
-
-      const worldCenterX = -previous.offsetX / previous.scale
-      const worldCenterY = -previous.offsetY / previous.scale
-
-      return {
-        scale: nextScale,
-        offsetX: -worldCenterX * nextScale,
-        offsetY: -worldCenterY * nextScale,
-      }
-    })
-  }, [])
-
-  const handleZoomIn = useCallback(() => {
-    adjustZoom(ZOOM_STEP)
-  }, [adjustZoom])
-
-  const handleZoomOut = useCallback(() => {
-    adjustZoom(1 / ZOOM_STEP)
-  }, [adjustZoom])
-
-  const handleResetView = useCallback(() => {
-    const rootNode = nodes.find((node) => node.parentId === null) ?? null
-    setViewTransform({
-      scale: 1,
-      offsetX: rootNode ? -rootNode.x : 0,
-      offsetY: rootNode ? -rootNode.y : 0,
-    })
-  }, [nodes])
-
   const handleClearChildren = useCallback(() => {
     if (!hasChildNodes) {
       return
     }
     dispatch({ type: 'CLEAR_CHILDREN' })
   }, [dispatch, hasChildNodes])
+
+  const panByPixels = useCallback((deltaX: number, deltaY: number) => {
+    setViewTransform((previous) => ({
+      ...previous,
+      offsetX: previous.offsetX + deltaX,
+      offsetY: previous.offsetY + deltaY,
+    }))
+  }, [])
+
+  const handlePanUp = useCallback(() => {
+    panByPixels(0, -KEYBOARD_PAN_STEP)
+  }, [panByPixels])
+
+  const handlePanDown = useCallback(() => {
+    panByPixels(0, KEYBOARD_PAN_STEP)
+  }, [panByPixels])
+
+  const handlePanLeft = useCallback(() => {
+    panByPixels(-KEYBOARD_PAN_STEP, 0)
+  }, [panByPixels])
+
+  const handlePanRight = useCallback(() => {
+    panByPixels(KEYBOARD_PAN_STEP, 0)
+  }, [panByPixels])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -394,6 +511,48 @@ export default function App() {
         return
       }
 
+      if (key === 'arrowup') {
+        event.preventDefault()
+        handlePanUp()
+        return
+      }
+
+      if (key === 'arrowdown') {
+        event.preventDefault()
+        handlePanDown()
+        return
+      }
+
+      if (key === 'arrowleft') {
+        event.preventDefault()
+        handlePanLeft()
+        return
+      }
+
+      if (key === 'arrowright') {
+        event.preventDefault()
+        handlePanRight()
+        return
+      }
+
+      if (key === '+' || key === '=') {
+        event.preventDefault()
+        handleZoomIn()
+        return
+      }
+
+      if (key === '-' || key === '_') {
+        event.preventDefault()
+        handleZoomOut()
+        return
+      }
+
+      if (key === 'c') {
+        event.preventDefault()
+        handleResetView()
+        return
+      }
+
       if (key === 'enter') {
         event.preventDefault()
         handleAddChild()
@@ -408,7 +567,19 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleAddChild, handleDeleteNode, handleRedo, handleUndo])
+  }, [
+    handleAddChild,
+    handleDeleteNode,
+    handlePanDown,
+    handlePanLeft,
+    handlePanRight,
+    handlePanUp,
+    handleRedo,
+    handleResetView,
+    handleUndo,
+    handleZoomIn,
+    handleZoomOut,
+  ])
 
   const handleExportJson = useCallback(() => {
     const payload = JSON.stringify(
@@ -544,18 +715,6 @@ export default function App() {
         <button type="button" onClick={handleAddChild} title="Enter">
           Add child
         </button>
-        <button type="button" onClick={handleZoomOut} disabled={!canZoomOut} title="Zoom out">
-          Zoom out
-        </button>
-        <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in">
-          Zoom in
-        </button>
-        <button type="button" onClick={handleResetView} title="Return to centered view">
-          Center view
-        </button>
-        <span className="mindmap-toolbar__zoom-indicator" aria-live="polite">
-          {zoomPercentage}%
-        </span>
         <label className="mindmap-toolbar__text-editor">
           <span>Edit text</span>
           <input
@@ -577,7 +736,7 @@ export default function App() {
           disabled={!hasChildNodes}
           title="Remove every node that has a parent"
         >
-          Clear child nodes
+          Clear
         </button>
         <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
           Undo
@@ -601,6 +760,44 @@ export default function App() {
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
+      </div>
+      <div className="mindmap-navigation" role="group" aria-label="Viewport navigation controls">
+        <div className="mindmap-navigation__dpad">
+          <div className="mindmap-navigation__spacer" aria-hidden="true" />
+          <button type="button" onClick={handlePanUp} aria-label="Pan up" title="Pan up (Arrow Up)">
+            ↑
+          </button>
+          <div className="mindmap-navigation__spacer" aria-hidden="true" />
+          <button type="button" onClick={handlePanLeft} aria-label="Pan left" title="Pan left (Arrow Left)">
+            ←
+          </button>
+          <button
+            type="button"
+            onClick={handleResetView}
+            aria-label="Center view"
+            title="Center view (C)"
+            className="mindmap-navigation__center"
+          >
+            ⦿
+          </button>
+          <button type="button" onClick={handlePanRight} aria-label="Pan right" title="Pan right (Arrow Right)">
+            →
+          </button>
+          <div className="mindmap-navigation__spacer" aria-hidden="true" />
+          <button type="button" onClick={handlePanDown} aria-label="Pan down" title="Pan down (Arrow Down)">
+            ↓
+          </button>
+          <div className="mindmap-navigation__spacer" aria-hidden="true" />
+        </div>
+        <div className="mindmap-navigation__zoom" aria-live="polite">
+          <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in (+)">
+            +
+          </button>
+          <span>{zoomPercentage}%</span>
+          <button type="button" onClick={handleZoomOut} disabled={!canZoomOut} title="Zoom out (-)">
+            −
+          </button>
+        </div>
       </div>
     </div>
   )
