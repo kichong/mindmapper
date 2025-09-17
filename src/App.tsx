@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { type MindMapAnnotation, type MindMapNode, useMindMap } from './state/MindMapContext'
 import './App.css'
 
-const NODE_RADIUS = 40
+const NODE_BASE_RADIUS = 40
+const NODE_TEXT_PADDING = 18
+const NODE_FONT = '16px Inter, system-ui, sans-serif'
 const LINK_DISTANCE = 160
 const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
 const MIN_ZOOM = 0.5
@@ -55,7 +57,11 @@ type CanvasSize = {
   height: number
 }
 
-function calculateFitView(nodes: MindMapNode[], size: CanvasSize): ViewTransform | null {
+function calculateFitView(
+  nodes: MindMapNode[],
+  size: CanvasSize,
+  getNodeRadius: (node: MindMapNode) => number,
+): ViewTransform | null {
   const { width, height } = size
   if (nodes.length === 0 || width === 0 || height === 0) {
     return null
@@ -67,10 +73,11 @@ function calculateFitView(nodes: MindMapNode[], size: CanvasSize): ViewTransform
   let maxY = -Infinity
 
   nodes.forEach((node) => {
-    minX = Math.min(minX, node.x - NODE_RADIUS)
-    maxX = Math.max(maxX, node.x + NODE_RADIUS)
-    minY = Math.min(minY, node.y - NODE_RADIUS)
-    maxY = Math.max(maxY, node.y + NODE_RADIUS)
+    const radius = getNodeRadius(node)
+    minX = Math.min(minX, node.x - radius)
+    maxX = Math.max(maxX, node.x + radius)
+    minY = Math.min(minY, node.y - radius)
+    maxY = Math.max(maxY, node.y + radius)
   })
 
   if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
@@ -105,6 +112,8 @@ export default function App() {
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
   const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const nodeInputRef = useRef<HTMLInputElement | null>(null)
+  const annotationInputRef = useRef<HTMLInputElement | null>(null)
   const {
     state: { nodes, annotations, selectedNodeId, selectedAnnotationId, history },
     dispatch,
@@ -143,6 +152,36 @@ export default function App() {
   const hasAutoCenteredRef = useRef(false)
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
+
+  const getNodeRadius = useCallback(
+    (node: MindMapNode) => {
+      const context = contextRef.current
+      if (!context) {
+        return NODE_BASE_RADIUS
+      }
+
+      const previousFont = context.font
+      context.font = NODE_FONT
+      const label = node.text.length > 0 ? node.text : 'New Idea'
+      const metrics = context.measureText(label)
+      context.font = previousFont
+
+      const radius = Math.max(NODE_BASE_RADIUS, metrics.width / 2 + NODE_TEXT_PADDING)
+      return radius
+    },
+    [],
+  )
+
+  const focusInput = useCallback((input: HTMLInputElement | null) => {
+    if (!input) {
+      return
+    }
+
+    requestAnimationFrame(() => {
+      input.focus()
+      input.select()
+    })
+  }, [])
 
   const measureAnnotation = useCallback((annotation: MindMapAnnotation) => {
     const context = contextRef.current
@@ -230,10 +269,11 @@ export default function App() {
     nodesToDraw.forEach((node) => {
       const nodeX = node.x
       const nodeY = node.y
+      const radius = getNodeRadius(node)
 
       context.fillStyle = node.color || '#4f46e5'
       context.beginPath()
-      context.arc(nodeX, nodeY, NODE_RADIUS, 0, Math.PI * 2)
+      context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
       context.fill()
 
       if (node.id === selectedId) {
@@ -245,10 +285,12 @@ export default function App() {
       }
 
       context.fillStyle = '#ffffff'
-      context.font = '16px Inter, system-ui, sans-serif'
+      const previousFont = context.font
+      context.font = NODE_FONT
       context.textAlign = 'center'
       context.textBaseline = 'middle'
       context.fillText(node.text, nodeX, nodeY)
+      context.font = previousFont
     })
 
     context.font = ANNOTATION_FONT
@@ -280,7 +322,7 @@ export default function App() {
     })
 
     context.restore()
-  }, [measureAnnotation])
+  }, [getNodeRadius, measureAnnotation])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -309,13 +351,13 @@ export default function App() {
     drawScene()
 
     if (!hasAutoCenteredRef.current) {
-      const fitTransform = calculateFitView(nodesRef.current, sizeRef.current)
+      const fitTransform = calculateFitView(nodesRef.current, sizeRef.current, getNodeRadius)
       if (fitTransform) {
         hasAutoCenteredRef.current = true
         setViewTransform(fitTransform)
       }
     }
-  }, [drawScene])
+  }, [drawScene, getNodeRadius])
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -393,7 +435,7 @@ export default function App() {
   }, [adjustZoom])
 
   const handleResetView = useCallback(() => {
-    const fitTransform = calculateFitView(nodes, sizeRef.current)
+    const fitTransform = calculateFitView(nodes, sizeRef.current, getNodeRadius)
     if (fitTransform) {
       hasAutoCenteredRef.current = true
       setViewTransform(fitTransform)
@@ -405,7 +447,7 @@ export default function App() {
       offsetX: 0,
       offsetY: 0,
     })
-  }, [nodes])
+  }, [getNodeRadius, nodes])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -423,7 +465,7 @@ export default function App() {
 
     canvas.style.cursor = 'grab'
 
-    const getCanvasPoint = (event: PointerEvent | WheelEvent) => {
+    const getCanvasPoint = (event: PointerEvent | WheelEvent | MouseEvent) => {
       const rect = canvas.getBoundingClientRect()
       return {
         x: event.clientX - rect.left,
@@ -431,8 +473,7 @@ export default function App() {
       }
     }
 
-    const getScenePoint = (event: PointerEvent) => {
-      const { x, y } = getCanvasPoint(event)
+    const getScenePointFromCanvas = (x: number, y: number) => {
       const { width, height } = sizeRef.current
       const { scale, offsetX, offsetY } = viewRef.current
       const centerX = width / 2
@@ -442,6 +483,11 @@ export default function App() {
         x: (x - centerX - offsetX) / scale,
         y: (y - centerY - offsetY) / scale,
       }
+    }
+
+    const getScenePoint = (event: PointerEvent) => {
+      const { x, y } = getCanvasPoint(event)
+      return getScenePointFromCanvas(x, y)
     }
 
     const finishInteraction = (pointerId: number, shouldDeselect: boolean) => {
@@ -509,7 +555,7 @@ export default function App() {
 
       const hitNode = [...nodesRef.current]
         .reverse()
-        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= NODE_RADIUS)
+        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
 
       if (hitNode) {
         interactionRef.current = {
@@ -607,12 +653,58 @@ export default function App() {
       adjustZoom(zoomFactor, { screenX: x, screenY: y })
     }
 
+    const handleDoubleClick = (event: MouseEvent) => {
+      const { x, y } = getCanvasPoint(event)
+      const scenePoint = getScenePointFromCanvas(x, y)
+
+      const hitAnnotation = [...annotationsRef.current]
+        .reverse()
+        .find((annotation) => {
+          const metrics = measureAnnotation(annotation)
+          if (!metrics) {
+            return false
+          }
+
+          const halfWidth = metrics.width / 2
+          const halfHeight = metrics.height / 2
+
+          return (
+            scenePoint.x >= annotation.x - halfWidth &&
+            scenePoint.x <= annotation.x + halfWidth &&
+            scenePoint.y >= annotation.y - halfHeight &&
+            scenePoint.y <= annotation.y + halfHeight
+          )
+        })
+
+      if (hitAnnotation) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
+        setAnnotationEditText(hitAnnotation.text)
+        focusInput(annotationInputRef.current)
+        event.preventDefault()
+        return
+      }
+
+      const hitNode = [...nodesRef.current]
+        .reverse()
+        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
+
+      if (hitNode) {
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        setEditText(hitNode.text)
+        focusInput(nodeInputRef.current)
+        event.preventDefault()
+      }
+    }
+
     window.addEventListener('resize', resizeCanvas)
     canvas.addEventListener('pointerdown', handlePointerDown)
     canvas.addEventListener('pointermove', handlePointerMove)
     canvas.addEventListener('pointerup', handlePointerUp)
     canvas.addEventListener('pointercancel', handlePointerCancel)
     canvas.addEventListener('wheel', handleWheel, { passive: false })
+    canvas.addEventListener('dblclick', handleDoubleClick)
 
     return () => {
       window.removeEventListener('resize', resizeCanvas)
@@ -621,8 +713,9 @@ export default function App() {
       canvas.removeEventListener('pointerup', handlePointerUp)
       canvas.removeEventListener('pointercancel', handlePointerCancel)
       canvas.removeEventListener('wheel', handleWheel)
+      canvas.removeEventListener('dblclick', handleDoubleClick)
     }
-  }, [adjustZoom, dispatch, measureAnnotation, resizeCanvas])
+  }, [adjustZoom, dispatch, focusInput, getNodeRadius, measureAnnotation, resizeCanvas])
 
   const handleAddChild = useCallback(() => {
     if (nodes.length === 0) {
@@ -1047,50 +1140,13 @@ export default function App() {
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className="mindmap-toolbar">
-        <div className="mindmap-toolbar__row">
-          <div className="mindmap-toolbar__actions">
-            <button type="button" onClick={handleAddChild} title="Enter">
-              Add child
-            </button>
-            <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
-              Add text
-            </button>
-          </div>
-          <div className="mindmap-toolbar__io">
-            <button
-              type="button"
-              onClick={handleImportJson}
-              title="Load from JSON file"
-              className="mindmap-toolbar__io-button"
-            >
-              Import
-            </button>
-            <div className="mindmap-toolbar__export" ref={exportMenuRef}>
-              <button
-                type="button"
-                onClick={toggleExportMenu}
-                className="mindmap-toolbar__io-button"
-                aria-expanded={isExportMenuOpen}
-                aria-haspopup="true"
-                title="Download a copy of your map"
-              >
-                Export
-              </button>
-              {isExportMenuOpen ? (
-                <div className="mindmap-toolbar__export-menu" role="menu">
-                  <button type="button" onClick={handleExportJson} role="menuitem">
-                    Export JSON
-                  </button>
-                  <button type="button" onClick={handleExportPng} role="menuitem">
-                    Export PNG
-                  </button>
-                  <button type="button" disabled role="menuitem" title="PDF export is coming soon">
-                    Export PDF (coming soon)
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
+        <div className="mindmap-toolbar__actions">
+          <button type="button" onClick={handleAddChild} title="Enter">
+            Add child
+          </button>
+          <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
+            Add text
+          </button>
         </div>
         <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
           <label className="mindmap-toolbar__text-editor">
@@ -1103,6 +1159,7 @@ export default function App() {
               disabled={!selectedNode}
               aria-label="Selected node text"
               className="mindmap-toolbar__text-input"
+              ref={nodeInputRef}
             />
           </label>
           <label className="mindmap-toolbar__text-editor">
@@ -1117,8 +1174,44 @@ export default function App() {
               disabled={!selectedAnnotation}
               aria-label="Selected text box content"
               className="mindmap-toolbar__text-input"
+              ref={annotationInputRef}
             />
           </label>
+        </div>
+      </div>
+      <div className="mindmap-io-panel">
+        <button
+          type="button"
+          onClick={handleImportJson}
+          title="Load from JSON file"
+          className="mindmap-toolbar__io-button"
+        >
+          Import
+        </button>
+        <div className="mindmap-io-panel__export" ref={exportMenuRef}>
+          <button
+            type="button"
+            onClick={toggleExportMenu}
+            className="mindmap-toolbar__io-button"
+            aria-expanded={isExportMenuOpen}
+            aria-haspopup="true"
+            title="Download a copy of your map"
+          >
+            Export
+          </button>
+          {isExportMenuOpen ? (
+            <div className="mindmap-io-panel__export-menu" role="menu">
+              <button type="button" onClick={handleExportJson} role="menuitem">
+                Export JSON
+              </button>
+              <button type="button" onClick={handleExportPng} role="menuitem">
+                Export PNG
+              </button>
+              <button type="button" disabled role="menuitem" title="PDF export is coming soon">
+                Export PDF (coming soon)
+              </button>
+            </div>
+          ) : null}
         </div>
         <input
           ref={fileInputRef}
