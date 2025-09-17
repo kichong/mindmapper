@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { type MindMapAnnotation, type MindMapNode, useMindMap } from './state/MindMapContext'
+import { type MindMapAnnotation, type MindMapNode, type MindMapShape, useMindMap } from './state/MindMapContext'
 import './App.css'
 
 const NODE_BASE_RADIUS = 40
@@ -17,6 +17,12 @@ const ANNOTATION_LINE_HEIGHT = 24
 const ANNOTATION_PADDING_X = 14
 const ANNOTATION_PADDING_Y = 10
 const ANNOTATION_MIN_WIDTH = 120
+const RING_DEFAULT_RADIUS = 160
+const RING_DEFAULT_THICKNESS = 18
+const RING_MIN_RADIUS = 48
+const RING_HANDLE_SCREEN_SIZE = 28
+const RING_HIT_PADDING = 6
+const RING_DEFAULT_COLOR = '#38bdf8'
 
 type ViewTransform = {
   scale: number
@@ -40,6 +46,18 @@ type InteractionState =
       annotationId: string
       offsetX: number
       offsetY: number
+    }
+  | {
+      mode: 'shape-move'
+      pointerId: number
+      shapeId: string
+      offsetX: number
+      offsetY: number
+    }
+  | {
+      mode: 'shape-resize'
+      pointerId: number
+      shapeId: string
     }
   | {
       mode: 'pan'
@@ -115,7 +133,7 @@ export default function App() {
   const nodeInputRef = useRef<HTMLInputElement | null>(null)
   const annotationInputRef = useRef<HTMLInputElement | null>(null)
   const {
-    state: { nodes, annotations, selectedNodeId, selectedAnnotationId, history },
+    state: { nodes, annotations, shapes, selectedNodeId, selectedAnnotationId, selectedShapeId, history },
     dispatch,
   } = useMindMap()
 
@@ -125,6 +143,8 @@ export default function App() {
   const annotationsRef = useRef(annotations)
   const selectedNodeRef = useRef(selectedNodeId)
   const selectedAnnotationRef = useRef(selectedAnnotationId)
+  const shapesRef = useRef(shapes)
+  const selectedShapeRef = useRef(selectedShapeId)
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
@@ -138,6 +158,13 @@ export default function App() {
         : null,
     [annotations, selectedAnnotationId],
   )
+
+  const selectedShape = useMemo(
+    () => (selectedShapeId ? shapes.find((shape) => shape.id === selectedShapeId) ?? null : null),
+    [shapes, selectedShapeId],
+  )
+
+  const selectedRing = selectedShape && selectedShape.kind === 'ring' ? selectedShape : null
 
   const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
   const [annotationEditText, setAnnotationEditText] = useState(
@@ -235,6 +262,8 @@ export default function App() {
     const selectedId = selectedNodeRef.current
     const annotationsToDraw = annotationsRef.current
     const selectedAnnotationId = selectedAnnotationRef.current
+    const shapesToDraw = shapesRef.current
+    const selectedShapeId = selectedShapeRef.current
     const { scale, offsetX, offsetY } = viewRef.current
 
     context.clearRect(0, 0, width, height)
@@ -246,6 +275,41 @@ export default function App() {
     context.save()
     context.translate(centerX + offsetX, centerY + offsetY)
     context.scale(scale, scale)
+
+    shapesToDraw.forEach((shape) => {
+      if (shape.kind !== 'ring') {
+        return
+      }
+
+      const radius = Math.max(shape.radius, 0)
+      const strokeWidth = Math.max(1, shape.thickness)
+      context.lineWidth = strokeWidth
+      context.strokeStyle = shape.color || RING_DEFAULT_COLOR
+      context.beginPath()
+      context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
+      context.stroke()
+
+      if (shape.id !== selectedShapeId) {
+        return
+      }
+
+      const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
+      context.lineWidth = highlightWidth
+      context.strokeStyle = '#f97316'
+      context.beginPath()
+      context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
+      context.stroke()
+
+      const handleSize = RING_HANDLE_SCREEN_SIZE / scale
+      const handleHalf = handleSize / 2
+      const handleX = shape.x + radius
+      const handleY = shape.y
+      context.fillStyle = '#facc15'
+      context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+      context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+      context.strokeStyle = '#0f172a'
+      context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+    })
 
     context.lineWidth = 2
     context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
@@ -364,8 +428,10 @@ export default function App() {
     annotationsRef.current = annotations
     selectedNodeRef.current = selectedNodeId
     selectedAnnotationRef.current = selectedAnnotationId
+    shapesRef.current = shapes
+    selectedShapeRef.current = selectedShapeId
     drawScene()
-  }, [annotations, nodes, selectedAnnotationId, selectedNodeId, drawScene])
+  }, [annotations, nodes, selectedAnnotationId, selectedNodeId, selectedShapeId, shapes, drawScene])
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -499,6 +565,7 @@ export default function App() {
       if (interaction.mode === 'pan' && shouldDeselect && !interaction.moved) {
         dispatch({ type: 'SELECT_NODE', nodeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
       }
 
       interactionRef.current = null
@@ -516,6 +583,77 @@ export default function App() {
       }
 
       const scenePoint = getScenePoint(event)
+      const { scale } = viewRef.current
+      const handleHalfSize = RING_HANDLE_SCREEN_SIZE / scale / 2
+
+      const hitResizeShape = [...shapesRef.current]
+        .reverse()
+        .find((shape) => {
+          if (shape.kind !== 'ring') {
+            return false
+          }
+
+          const radius = Math.max(shape.radius, 0)
+          const handleX = shape.x + radius
+          const handleY = shape.y
+
+          return (
+            scenePoint.x >= handleX - handleHalfSize &&
+            scenePoint.x <= handleX + handleHalfSize &&
+            scenePoint.y >= handleY - handleHalfSize &&
+            scenePoint.y <= handleY + handleHalfSize
+          )
+        })
+
+      if (hitResizeShape) {
+        interactionRef.current = {
+          mode: 'shape-resize',
+          pointerId: event.pointerId,
+          shapeId: hitResizeShape.id,
+        }
+
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
+        canvas.setPointerCapture(event.pointerId)
+        canvas.style.cursor = 'grabbing'
+        event.preventDefault()
+        return
+      }
+
+      const hitShape = [...shapesRef.current]
+        .reverse()
+        .find((shape) => {
+          if (shape.kind !== 'ring') {
+            return false
+          }
+
+          const radius = Math.max(shape.radius, 0)
+          const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+          const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
+          const innerRadius = Math.max(0, radius - halfThickness)
+          const outerRadius = radius + halfThickness
+
+          return distance >= innerRadius && distance <= outerRadius
+        })
+
+      if (hitShape) {
+        interactionRef.current = {
+          mode: 'shape-move',
+          pointerId: event.pointerId,
+          shapeId: hitShape.id,
+          offsetX: scenePoint.x - hitShape.x,
+          offsetY: scenePoint.y - hitShape.y,
+        }
+
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
+        canvas.setPointerCapture(event.pointerId)
+        canvas.style.cursor = 'grabbing'
+        event.preventDefault()
+        return
+      }
 
       const hitAnnotation = [...annotationsRef.current]
         .reverse()
@@ -546,6 +684,7 @@ export default function App() {
         }
 
         dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
@@ -567,6 +706,7 @@ export default function App() {
         }
 
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
@@ -617,6 +757,52 @@ export default function App() {
           annotationId: interaction.annotationId,
           x: scenePoint.x - interaction.offsetX,
           y: scenePoint.y - interaction.offsetY,
+        })
+        return
+      }
+
+      if (interaction.mode === 'shape-move') {
+        const scenePoint = getScenePoint(event)
+        const shape = shapesRef.current.find((item) => item.id === interaction.shapeId)
+        if (!shape) {
+          return
+        }
+
+        const nextX = scenePoint.x - interaction.offsetX
+        const nextY = scenePoint.y - interaction.offsetY
+
+        if (Math.abs(nextX - shape.x) < 0.5 && Math.abs(nextY - shape.y) < 0.5) {
+          return
+        }
+
+        dispatch({
+          type: 'MOVE_SHAPE',
+          shapeId: interaction.shapeId,
+          x: nextX,
+          y: nextY,
+        })
+        return
+      }
+
+      if (interaction.mode === 'shape-resize') {
+        const scenePoint = getScenePoint(event)
+        const shape = shapesRef.current.find((item) => item.id === interaction.shapeId)
+        if (!shape || shape.kind !== 'ring') {
+          return
+        }
+
+        const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+        const minRadius = Math.max(RING_MIN_RADIUS, shape.thickness / 2 + 4)
+        const nextRadius = Math.max(minRadius, distance)
+
+        if (Math.abs(nextRadius - shape.radius) < 0.5) {
+          return
+        }
+
+        dispatch({
+          type: 'UPDATE_SHAPE',
+          shapeId: shape.id,
+          updates: { radius: nextRadius },
         })
         return
       }
@@ -678,6 +864,7 @@ export default function App() {
 
       if (hitAnnotation) {
         dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setAnnotationEditText(hitAnnotation.text)
         focusInput(annotationInputRef.current)
@@ -691,6 +878,7 @@ export default function App() {
 
       if (hitNode) {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         setEditText(hitNode.text)
         focusInput(nodeInputRef.current)
@@ -778,7 +966,38 @@ export default function App() {
     })
   }, [dispatch])
 
+  const handleAddRing = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'ring',
+        x: worldCenterX,
+        y: worldCenterY,
+        radius: RING_DEFAULT_RADIUS,
+        thickness: RING_DEFAULT_THICKNESS,
+        color: RING_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
   const handleDeleteSelection = useCallback(() => {
+    if (selectedShape) {
+      dispatch({ type: 'DELETE_SHAPE', shapeId: selectedShape.id })
+      return
+    }
+
     if (selectedAnnotation) {
       dispatch({ type: 'DELETE_ANNOTATION', annotationId: selectedAnnotation.id })
       return
@@ -793,7 +1012,7 @@ export default function App() {
     }
 
     dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, selectedAnnotation, selectedNode, selectedNodeId])
+  }, [dispatch, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
 
   const handleUndo = useCallback(() => {
     if (past.length === 0) {
@@ -814,6 +1033,10 @@ export default function App() {
       return false
     }
 
+    if (shapes.length > 0) {
+      return false
+    }
+
     if (nodes.length !== 1) {
       return false
     }
@@ -831,7 +1054,7 @@ export default function App() {
       rootNode.y === 0 &&
       rootNode.color === '#4f46e5'
     )
-  }, [annotations, nodes])
+  }, [annotations, nodes, shapes])
 
   const canClear = !isPristineState
 
@@ -968,6 +1191,7 @@ export default function App() {
       {
         nodes: nodes.map((node) => ({ ...node })),
         annotations: annotations.map((annotation) => ({ ...annotation })),
+        shapes: shapes.map((shape) => ({ ...shape })),
         exportedAt: new Date().toISOString(),
       },
       null,
@@ -981,7 +1205,7 @@ export default function App() {
     anchor.download = 'mindmap.json'
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [annotations, closeExportMenu, nodes])
+  }, [annotations, closeExportMenu, nodes, shapes])
 
   const handleExportPng = useCallback(() => {
     closeExportMenu()
@@ -1056,6 +1280,44 @@ export default function App() {
       .map((annotation) => ({ ...annotation }))
   }, [])
 
+  const sanitizeImportedShapes = useCallback((value: unknown) => {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value
+      .filter((item): item is MindMapShape => {
+        if (!item || typeof item !== 'object') {
+          return false
+        }
+        const shape = item as Partial<MindMapShape>
+        return (
+          shape.kind === 'ring' &&
+          typeof shape.id === 'string' &&
+          typeof shape.x === 'number' &&
+          typeof shape.y === 'number' &&
+          typeof shape.radius === 'number' &&
+          typeof shape.thickness === 'number' &&
+          typeof shape.color === 'string'
+        )
+      })
+      .map((shape) => {
+        const radius = Math.max(RING_MIN_RADIUS, Math.abs(shape.radius))
+        const thickness = Math.max(1, Math.abs(shape.thickness))
+        const color = typeof shape.color === 'string' ? shape.color : RING_DEFAULT_COLOR
+
+        return {
+          id: shape.id,
+          kind: 'ring' as const,
+          x: shape.x,
+          y: shape.y,
+          radius,
+          thickness: Math.min(thickness, radius * 1.5),
+          color,
+        }
+      })
+  }, [])
+
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
@@ -1069,16 +1331,23 @@ export default function App() {
           const parsed = JSON.parse(String(reader.result)) as {
             nodes?: unknown
             annotations?: unknown
+            shapes?: unknown
           }
           const importedNodes = sanitizeImportedNodes(parsed.nodes)
           const importedAnnotations = sanitizeImportedAnnotations(parsed.annotations)
+          const importedShapes = sanitizeImportedShapes(parsed.shapes)
 
           if (!importedNodes) {
             window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
             return
           }
 
-          dispatch({ type: 'IMPORT', nodes: importedNodes, annotations: importedAnnotations })
+          dispatch({
+            type: 'IMPORT',
+            nodes: importedNodes,
+            annotations: importedAnnotations,
+            shapes: importedShapes,
+          })
         } catch (error) {
           console.error('Failed to import mind map', error)
           window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
@@ -1087,7 +1356,7 @@ export default function App() {
       reader.readAsText(file)
       event.target.value = ''
     },
-    [dispatch, sanitizeImportedAnnotations, sanitizeImportedNodes],
+    [dispatch, sanitizeImportedAnnotations, sanitizeImportedNodes, sanitizeImportedShapes],
   )
 
   const handleImportJson = useCallback(() => {
@@ -1097,7 +1366,8 @@ export default function App() {
 
   const canDeleteNode = Boolean(selectedNode && selectedNode.parentId !== null)
   const canDeleteAnnotation = Boolean(selectedAnnotation)
-  const canDelete = canDeleteNode || canDeleteAnnotation
+  const canDeleteShape = Boolean(selectedShape)
+  const canDelete = canDeleteNode || canDeleteAnnotation || canDeleteShape
   const canUndo = past.length > 0
   const canRedo = future.length > 0
   const canZoomIn = viewTransform.scale < MAX_ZOOM - 0.001
@@ -1147,6 +1417,19 @@ export default function App() {
           <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
             Add text
           </button>
+        </div>
+        <div className="mindmap-toolbar__section" aria-label="Shape tools">
+          <span className="mindmap-toolbar__section-title">Shapes</span>
+          <div className="mindmap-toolbar__shape-actions">
+            <button type="button" onClick={handleAddRing} title="Add a ring to group related ideas">
+              Add ring
+            </button>
+          </div>
+          <p className="mindmap-toolbar__shape-hint" aria-live="polite">
+            {selectedRing
+              ? `Ring radius: ${Math.round(selectedRing.radius)} px. Drag the golden square on the ring to resize it.`
+              : 'Add a ring to frame related ideas. Select the ring and drag the golden square to resize it.'}
+          </p>
         </div>
         <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
           <label className="mindmap-toolbar__text-editor">

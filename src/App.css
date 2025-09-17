@@ -77,6 +77,32 @@
   gap: 0.5rem;
 }
 
+.mindmap-toolbar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mindmap-toolbar__section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.mindmap-toolbar__shape-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mindmap-toolbar__shape-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #cbd5f5;
+  line-height: 1.4;
+}
+
 .mindmap-toolbar__io-button {
   background: #38bdf8;
   color: #0f172a;
