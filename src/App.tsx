@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { type MindMapNode, useMindMap } from './state/MindMapContext'
 import './App.css'
 
@@ -32,6 +32,17 @@ export default function App() {
 
   const nodesRef = useRef(nodes)
   const selectedNodeRef = useRef(selectedNodeId)
+
+  const selectedNode = useMemo(
+    () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
+    [nodes, selectedNodeId],
+  )
+
+  const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
+
+  useEffect(() => {
+    setEditText(selectedNode?.text ?? '')
+  }, [selectedNode?.id, selectedNode?.text])
 
   const drawScene = useCallback(() => {
     const context = contextRef.current
@@ -226,7 +237,6 @@ export default function App() {
       return
     }
 
-    const selectedNode = nodes.find((node) => node.id === selectedNodeId)
     const rootNode = nodes.find((node) => node.parentId === null)
     const parent = selectedNode ?? rootNode ?? nodes[0]
 
@@ -258,20 +268,19 @@ export default function App() {
         color: nodeColor,
       },
     })
-  }, [dispatch, nodes, selectedNodeId])
+  }, [dispatch, nodes, selectedNode])
 
   const handleDeleteNode = useCallback(() => {
-    if (!selectedNodeId) {
+    if (!selectedNodeId || !selectedNode) {
       return
     }
 
-    const target = nodes.find((node) => node.id === selectedNodeId)
-    if (!target || target.parentId === null) {
+    if (selectedNode.parentId === null) {
       return
     }
 
     dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, nodes, selectedNodeId])
+  }, [dispatch, selectedNode, selectedNodeId])
 
   const handleUndo = useCallback(() => {
     if (past.length === 0) {
@@ -429,11 +438,25 @@ export default function App() {
     fileInputRef.current?.click()
   }, [])
 
-  const canDelete = Boolean(
-    selectedNodeId && nodes.some((node) => node.id === selectedNodeId && node.parentId !== null),
-  )
+  const canDelete = Boolean(selectedNode && selectedNode.parentId !== null)
   const canUndo = past.length > 0
   const canRedo = future.length > 0
+
+  const handleNodeTextChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value
+      setEditText(value)
+
+      if (selectedNodeId) {
+        dispatch({
+          type: 'UPDATE_NODE',
+          nodeId: selectedNodeId,
+          updates: { text: value },
+        })
+      }
+    },
+    [dispatch, selectedNodeId],
+  )
 
   return (
     <div className="app-shell">
@@ -442,6 +465,18 @@ export default function App() {
         <button type="button" onClick={handleAddChild} title="Enter">
           Add child
         </button>
+        <label className="mindmap-toolbar__text-editor">
+          <span>Edit text</span>
+          <input
+            type="text"
+            value={editText}
+            onChange={handleNodeTextChange}
+            placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
+            disabled={!selectedNode}
+            aria-label="Selected node text"
+            className="mindmap-toolbar__text-input"
+          />
+        </label>
         <button type="button" onClick={handleDeleteNode} disabled={!canDelete} title="Delete or Backspace">
           Delete
         </button>
