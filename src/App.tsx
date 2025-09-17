@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { type MindMapNode, useMindMap } from './state/MindMapContext'
+import { type MindMapAnnotation, type MindMapNode, useMindMap } from './state/MindMapContext'
 import './App.css'
 
 const NODE_RADIUS = 40
@@ -10,6 +10,11 @@ const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
 const KEYBOARD_PAN_STEP = 80
 const AUTO_CENTER_PADDING = 160
+const ANNOTATION_FONT = '18px Inter, system-ui, sans-serif'
+const ANNOTATION_LINE_HEIGHT = 24
+const ANNOTATION_PADDING_X = 14
+const ANNOTATION_PADDING_Y = 10
+const ANNOTATION_MIN_WIDTH = 120
 
 type ViewTransform = {
   scale: number
@@ -24,6 +29,13 @@ type InteractionState =
       mode: 'node'
       pointerId: number
       nodeId: string
+      offsetX: number
+      offsetY: number
+    }
+  | {
+      mode: 'annotation'
+      pointerId: number
+      annotationId: string
       offsetX: number
       offsetY: number
     }
@@ -94,21 +106,34 @@ export default function App() {
   const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const {
-    state: { nodes, selectedNodeId, history },
+    state: { nodes, annotations, selectedNodeId, selectedAnnotationId, history },
     dispatch,
   } = useMindMap()
 
   const { past, future } = history
 
   const nodesRef = useRef(nodes)
+  const annotationsRef = useRef(annotations)
   const selectedNodeRef = useRef(selectedNodeId)
+  const selectedAnnotationRef = useRef(selectedAnnotationId)
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
     [nodes, selectedNodeId],
   )
 
+  const selectedAnnotation = useMemo(
+    () =>
+      selectedAnnotationId
+        ? annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null
+        : null,
+    [annotations, selectedAnnotationId],
+  )
+
   const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
+  const [annotationEditText, setAnnotationEditText] = useState(
+    () => selectedAnnotation?.text ?? '',
+  )
   const [viewTransform, setViewTransform] = useState<ViewTransform>(() => ({
     scale: 1,
     offsetX: 0,
@@ -117,9 +142,34 @@ export default function App() {
   const viewRef = useRef(viewTransform)
   const hasAutoCenteredRef = useRef(false)
 
+  const measureAnnotation = useCallback((annotation: MindMapAnnotation) => {
+    const context = contextRef.current
+    if (!context) {
+      return null
+    }
+
+    const previousFont = context.font
+    context.font = ANNOTATION_FONT
+    const content = annotation.text.length > 0 ? annotation.text : 'New text'
+    const metrics = context.measureText(content)
+    const textWidth = Math.max(
+      metrics.width,
+      ANNOTATION_MIN_WIDTH - ANNOTATION_PADDING_X * 2,
+    )
+    const width = textWidth + ANNOTATION_PADDING_X * 2
+    const height = ANNOTATION_LINE_HEIGHT + ANNOTATION_PADDING_Y * 2
+    context.font = previousFont
+
+    return { width, height }
+  }, [])
+
   useEffect(() => {
     setEditText(selectedNode?.text ?? '')
   }, [selectedNode?.id, selectedNode?.text])
+
+  useEffect(() => {
+    setAnnotationEditText(selectedAnnotation?.text ?? '')
+  }, [selectedAnnotation?.id, selectedAnnotation?.text])
 
   const drawScene = useCallback(() => {
     const context = contextRef.current
@@ -134,6 +184,8 @@ export default function App() {
 
     const nodesToDraw = nodesRef.current
     const selectedId = selectedNodeRef.current
+    const annotationsToDraw = annotationsRef.current
+    const selectedAnnotationId = selectedAnnotationRef.current
     const { scale, offsetX, offsetY } = viewRef.current
 
     context.clearRect(0, 0, width, height)
@@ -189,8 +241,36 @@ export default function App() {
       context.fillText(node.text, nodeX, nodeY)
     })
 
+    context.font = ANNOTATION_FONT
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+
+    annotationsToDraw.forEach((annotation) => {
+      const metrics = measureAnnotation(annotation)
+      const widthWithPadding = metrics?.width ?? ANNOTATION_MIN_WIDTH
+      const heightWithPadding =
+        metrics?.height ?? ANNOTATION_LINE_HEIGHT + ANNOTATION_PADDING_Y * 2
+      const rectX = annotation.x - widthWithPadding / 2
+      const rectY = annotation.y - heightWithPadding / 2
+
+      context.fillStyle = 'rgba(15, 23, 42, 0.78)'
+      context.fillRect(rectX, rectY, widthWithPadding, heightWithPadding)
+
+      context.lineWidth = annotation.id === selectedAnnotationId ? 3 : 1.5
+      context.strokeStyle =
+        annotation.id === selectedAnnotationId ? '#38bdf8' : 'rgba(148, 163, 184, 0.55)'
+      context.strokeRect(rectX, rectY, widthWithPadding, heightWithPadding)
+
+      context.fillStyle = '#f8fafc'
+      context.fillText(
+        annotation.text.length > 0 ? annotation.text : 'New text',
+        annotation.x,
+        annotation.y,
+      )
+    })
+
     context.restore()
-  }, [])
+  }, [measureAnnotation])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -229,9 +309,11 @@ export default function App() {
 
   useEffect(() => {
     nodesRef.current = nodes
+    annotationsRef.current = annotations
     selectedNodeRef.current = selectedNodeId
+    selectedAnnotationRef.current = selectedAnnotationId
     drawScene()
-  }, [nodes, selectedNodeId, drawScene])
+  }, [annotations, nodes, selectedAnnotationId, selectedNodeId, drawScene])
 
   const adjustZoom = useCallback((factor: number, pivot?: { screenX: number; screenY: number }) => {
     setViewTransform((previous) => {
@@ -334,6 +416,7 @@ export default function App() {
 
       if (interaction.mode === 'pan' && shouldDeselect && !interaction.moved) {
         dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
       }
 
       interactionRef.current = null
@@ -352,6 +435,42 @@ export default function App() {
 
       const scenePoint = getScenePoint(event)
 
+      const hitAnnotation = [...annotationsRef.current]
+        .reverse()
+        .find((annotation) => {
+          const metrics = measureAnnotation(annotation)
+          if (!metrics) {
+            return false
+          }
+
+          const halfWidth = metrics.width / 2
+          const halfHeight = metrics.height / 2
+
+          return (
+            scenePoint.x >= annotation.x - halfWidth &&
+            scenePoint.x <= annotation.x + halfWidth &&
+            scenePoint.y >= annotation.y - halfHeight &&
+            scenePoint.y <= annotation.y + halfHeight
+          )
+        })
+
+      if (hitAnnotation) {
+        interactionRef.current = {
+          mode: 'annotation',
+          pointerId: event.pointerId,
+          annotationId: hitAnnotation.id,
+          offsetX: scenePoint.x - hitAnnotation.x,
+          offsetY: scenePoint.y - hitAnnotation.y,
+        }
+
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
+        canvas.setPointerCapture(event.pointerId)
+        canvas.style.cursor = 'grabbing'
+        event.preventDefault()
+        return
+      }
+
       const hitNode = [...nodesRef.current]
         .reverse()
         .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= NODE_RADIUS)
@@ -365,6 +484,7 @@ export default function App() {
           offsetY: scenePoint.y - hitNode.y,
         }
 
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
@@ -401,6 +521,18 @@ export default function App() {
         dispatch({
           type: 'MOVE_NODE',
           nodeId: interaction.nodeId,
+          x: scenePoint.x - interaction.offsetX,
+          y: scenePoint.y - interaction.offsetY,
+        })
+        return
+      }
+
+      if (interaction.mode === 'annotation') {
+        const scenePoint = getScenePoint(event)
+
+        dispatch({
+          type: 'MOVE_ANNOTATION',
+          annotationId: interaction.annotationId,
           x: scenePoint.x - interaction.offsetX,
           y: scenePoint.y - interaction.offsetY,
         })
@@ -454,7 +586,7 @@ export default function App() {
       canvas.removeEventListener('pointercancel', handlePointerCancel)
       canvas.removeEventListener('wheel', handleWheel)
     }
-  }, [adjustZoom, dispatch, resizeCanvas])
+  }, [adjustZoom, dispatch, measureAnnotation, resizeCanvas])
 
   const handleAddChild = useCallback(() => {
     if (nodes.length === 0) {
@@ -494,7 +626,35 @@ export default function App() {
     })
   }, [dispatch, nodes, selectedNode])
 
-  const handleDeleteNode = useCallback(() => {
+  const handleAddAnnotation = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : (-offsetX) / scale
+    const worldCenterY = height === 0 ? 0 : (-offsetY) / scale
+
+    const newAnnotationId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_ANNOTATION',
+      annotation: {
+        id: newAnnotationId,
+        text: 'New text',
+        x: worldCenterX,
+        y: worldCenterY,
+      },
+    })
+  }, [dispatch])
+
+  const handleDeleteSelection = useCallback(() => {
+    if (selectedAnnotation) {
+      dispatch({ type: 'DELETE_ANNOTATION', annotationId: selectedAnnotation.id })
+      return
+    }
+
     if (!selectedNodeId || !selectedNode) {
       return
     }
@@ -504,7 +664,7 @@ export default function App() {
     }
 
     dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, selectedNode, selectedNodeId])
+  }, [dispatch, selectedAnnotation, selectedNode, selectedNodeId])
 
   const handleUndo = useCallback(() => {
     if (past.length === 0) {
@@ -628,7 +788,7 @@ export default function App() {
 
       if (key === 'delete' || key === 'backspace') {
         event.preventDefault()
-        handleDeleteNode()
+        handleDeleteSelection()
       }
     }
 
@@ -636,7 +796,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     handleAddChild,
-    handleDeleteNode,
+    handleDeleteSelection,
     handlePanDown,
     handlePanLeft,
     handlePanRight,
@@ -652,6 +812,7 @@ export default function App() {
     const payload = JSON.stringify(
       {
         nodes: nodes.map((node) => ({ ...node })),
+        annotations: annotations.map((annotation) => ({ ...annotation })),
         exportedAt: new Date().toISOString(),
       },
       null,
@@ -665,7 +826,7 @@ export default function App() {
     anchor.download = 'mindmap.json'
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [nodes])
+  }, [annotations, nodes])
 
   const handleExportPng = useCallback(() => {
     const canvas = canvasRef.current
@@ -718,6 +879,27 @@ export default function App() {
     return sanitized
   }, [])
 
+  const sanitizeImportedAnnotations = useCallback((value: unknown) => {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value
+      .filter((item): item is MindMapAnnotation => {
+        if (!item || typeof item !== 'object') {
+          return false
+        }
+        const annotation = item as Partial<MindMapAnnotation>
+        return (
+          typeof annotation.id === 'string' &&
+          typeof annotation.text === 'string' &&
+          typeof annotation.x === 'number' &&
+          typeof annotation.y === 'number'
+        )
+      })
+      .map((annotation) => ({ ...annotation }))
+  }, [])
+
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
@@ -728,15 +910,19 @@ export default function App() {
       const reader = new FileReader()
       reader.onload = () => {
         try {
-          const parsed = JSON.parse(String(reader.result)) as { nodes?: unknown }
+          const parsed = JSON.parse(String(reader.result)) as {
+            nodes?: unknown
+            annotations?: unknown
+          }
           const importedNodes = sanitizeImportedNodes(parsed.nodes)
+          const importedAnnotations = sanitizeImportedAnnotations(parsed.annotations)
 
           if (!importedNodes) {
             window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
             return
           }
 
-          dispatch({ type: 'IMPORT', nodes: importedNodes })
+          dispatch({ type: 'IMPORT', nodes: importedNodes, annotations: importedAnnotations })
         } catch (error) {
           console.error('Failed to import mind map', error)
           window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
@@ -745,14 +931,16 @@ export default function App() {
       reader.readAsText(file)
       event.target.value = ''
     },
-    [dispatch, sanitizeImportedNodes],
+    [dispatch, sanitizeImportedAnnotations, sanitizeImportedNodes],
   )
 
   const handleImportJson = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
 
-  const canDelete = Boolean(selectedNode && selectedNode.parentId !== null)
+  const canDeleteNode = Boolean(selectedNode && selectedNode.parentId !== null)
+  const canDeleteAnnotation = Boolean(selectedAnnotation)
+  const canDelete = canDeleteNode || canDeleteAnnotation
   const canUndo = past.length > 0
   const canRedo = future.length > 0
   const canZoomIn = viewTransform.scale < MAX_ZOOM - 0.001
@@ -775,12 +963,31 @@ export default function App() {
     [dispatch, selectedNodeId],
   )
 
+  const handleAnnotationTextChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value
+      setAnnotationEditText(value)
+
+      if (selectedAnnotationId) {
+        dispatch({
+          type: 'UPDATE_ANNOTATION',
+          annotationId: selectedAnnotationId,
+          updates: { text: value },
+        })
+      }
+    },
+    [dispatch, selectedAnnotationId],
+  )
+
   return (
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className="mindmap-toolbar">
         <button type="button" onClick={handleAddChild} title="Enter">
           Add child
+        </button>
+        <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
+          Add text
         </button>
         <label className="mindmap-toolbar__text-editor">
           <span>Edit text</span>
@@ -794,7 +1001,26 @@ export default function App() {
             className="mindmap-toolbar__text-input"
           />
         </label>
-        <button type="button" onClick={handleDeleteNode} disabled={!canDelete} title="Delete or Backspace">
+        <label className="mindmap-toolbar__text-editor">
+          <span>Edit note</span>
+          <input
+            type="text"
+            value={annotationEditText}
+            onChange={handleAnnotationTextChange}
+            placeholder={
+              selectedAnnotation ? 'Type here to update the note' : 'Select a text note first'
+            }
+            disabled={!selectedAnnotation}
+            aria-label="Selected note text"
+            className="mindmap-toolbar__text-input"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleDeleteSelection}
+          disabled={!canDelete}
+          title="Delete or Backspace"
+        >
           Delete
         </button>
         <button
