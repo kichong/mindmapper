@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { type MindMapAnnotation, type MindMapNode, type MindMapShape, useMindMap } from './state/MindMapContext'
+import {
+  type MindMapAnnotation,
+  type MindMapEllipse,
+  type MindMapNode,
+  type MindMapShape,
+  useMindMap,
+} from './state/MindMapContext'
 import './App.css'
 
 const NODE_BASE_RADIUS = 40
@@ -20,9 +26,16 @@ const ANNOTATION_MIN_WIDTH = 120
 const RING_DEFAULT_RADIUS = 160
 const RING_DEFAULT_THICKNESS = 18
 const RING_MIN_RADIUS = 48
-const RING_HANDLE_SCREEN_SIZE = 28
+const SHAPE_HANDLE_SCREEN_SIZE = 28
 const RING_HIT_PADDING = 6
 const RING_DEFAULT_COLOR = '#38bdf8'
+const ELLIPSE_DEFAULT_RADIUS_X = 200
+const ELLIPSE_DEFAULT_RADIUS_Y = 120
+const ELLIPSE_MIN_RADIUS_X = 60
+const ELLIPSE_MIN_RADIUS_Y = 45
+const ELLIPSE_DEFAULT_THICKNESS = 14
+const ELLIPSE_HIT_PADDING = 8
+const ELLIPSE_DEFAULT_COLOR = '#a855f7'
 
 type ViewTransform = {
   scale: number
@@ -165,6 +178,7 @@ export default function App() {
   )
 
   const selectedRing = selectedShape && selectedShape.kind === 'ring' ? selectedShape : null
+  const selectedEllipse = selectedShape && selectedShape.kind === 'ellipse' ? selectedShape : null
 
   const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
   const [annotationEditText, setAnnotationEditText] = useState(
@@ -277,38 +291,77 @@ export default function App() {
     context.scale(scale, scale)
 
     shapesToDraw.forEach((shape) => {
-      if (shape.kind !== 'ring') {
+      if (shape.kind === 'ring') {
+        context.save()
+        const radius = Math.max(shape.radius, 0)
+        const strokeWidth = Math.max(1, shape.thickness)
+        context.lineWidth = strokeWidth
+        context.strokeStyle = shape.color || RING_DEFAULT_COLOR
+        context.beginPath()
+        context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
+        context.stroke()
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.beginPath()
+          context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
+          context.stroke()
+
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handleX = shape.x + radius
+          const handleY = shape.y
+          context.fillStyle = '#facc15'
+          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+        }
+
+        context.restore()
         return
       }
 
-      const radius = Math.max(shape.radius, 0)
-      const strokeWidth = Math.max(1, shape.thickness)
-      context.lineWidth = strokeWidth
-      context.strokeStyle = shape.color || RING_DEFAULT_COLOR
-      context.beginPath()
-      context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
-      context.stroke()
+      if (shape.kind === 'ellipse') {
+        context.save()
+        const radiusX = Math.max(shape.radiusX, 0)
+        const radiusY = Math.max(shape.radiusY, 0)
+        const strokeWidth = Math.max(1, shape.thickness)
+        const fillColor = shape.color || ELLIPSE_DEFAULT_COLOR
 
-      if (shape.id !== selectedShapeId) {
-        return
+        context.beginPath()
+        context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
+        context.fillStyle = fillColor
+        context.globalAlpha = 0.15
+        context.fill()
+        context.globalAlpha = 1
+        context.lineWidth = strokeWidth
+        context.strokeStyle = fillColor
+        context.stroke()
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.beginPath()
+          context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
+          context.stroke()
+
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handleX = shape.x + radiusX
+          const handleY = shape.y + radiusY
+          context.fillStyle = '#facc15'
+          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+        }
+
+        context.restore()
       }
-
-      const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
-      context.lineWidth = highlightWidth
-      context.strokeStyle = '#f97316'
-      context.beginPath()
-      context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
-      context.stroke()
-
-      const handleSize = RING_HANDLE_SCREEN_SIZE / scale
-      const handleHalf = handleSize / 2
-      const handleX = shape.x + radius
-      const handleY = shape.y
-      context.fillStyle = '#facc15'
-      context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
-      context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-      context.strokeStyle = '#0f172a'
-      context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
     })
 
     context.lineWidth = 2
@@ -584,25 +637,39 @@ export default function App() {
 
       const scenePoint = getScenePoint(event)
       const { scale } = viewRef.current
-      const handleHalfSize = RING_HANDLE_SCREEN_SIZE / scale / 2
+      const handleHalfSize = SHAPE_HANDLE_SCREEN_SIZE / scale / 2
 
       const hitResizeShape = [...shapesRef.current]
         .reverse()
         .find((shape) => {
-          if (shape.kind !== 'ring') {
-            return false
+          if (shape.kind === 'ring') {
+            const radius = Math.max(shape.radius, 0)
+            const handleX = shape.x + radius
+            const handleY = shape.y
+
+            return (
+              scenePoint.x >= handleX - handleHalfSize &&
+              scenePoint.x <= handleX + handleHalfSize &&
+              scenePoint.y >= handleY - handleHalfSize &&
+              scenePoint.y <= handleY + handleHalfSize
+            )
           }
 
-          const radius = Math.max(shape.radius, 0)
-          const handleX = shape.x + radius
-          const handleY = shape.y
+          if (shape.kind === 'ellipse') {
+            const radiusX = Math.max(shape.radiusX, 0)
+            const radiusY = Math.max(shape.radiusY, 0)
+            const handleX = shape.x + radiusX
+            const handleY = shape.y + radiusY
 
-          return (
-            scenePoint.x >= handleX - handleHalfSize &&
-            scenePoint.x <= handleX + handleHalfSize &&
-            scenePoint.y >= handleY - handleHalfSize &&
-            scenePoint.y <= handleY + handleHalfSize
-          )
+            return (
+              scenePoint.x >= handleX - handleHalfSize &&
+              scenePoint.x <= handleX + handleHalfSize &&
+              scenePoint.y >= handleY - handleHalfSize &&
+              scenePoint.y <= handleY + handleHalfSize
+            )
+          }
+
+          return false
         })
 
       if (hitResizeShape) {
@@ -624,17 +691,31 @@ export default function App() {
       const hitShape = [...shapesRef.current]
         .reverse()
         .find((shape) => {
-          if (shape.kind !== 'ring') {
-            return false
+          if (shape.kind === 'ring') {
+            const radius = Math.max(shape.radius, 0)
+            const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+            const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
+            const innerRadius = Math.max(0, radius - halfThickness)
+            const outerRadius = radius + halfThickness
+
+            return distance >= innerRadius && distance <= outerRadius
           }
 
-          const radius = Math.max(shape.radius, 0)
-          const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
-          const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
-          const innerRadius = Math.max(0, radius - halfThickness)
-          const outerRadius = radius + halfThickness
+          if (shape.kind === 'ellipse') {
+            const radiusX = Math.max(shape.radiusX, 1)
+            const radiusY = Math.max(shape.radiusY, 1)
+            const dx = scenePoint.x - shape.x
+            const dy = scenePoint.y - shape.y
+            const outerRadiusX = radiusX + ELLIPSE_HIT_PADDING
+            const outerRadiusY = radiusY + ELLIPSE_HIT_PADDING
 
-          return distance >= innerRadius && distance <= outerRadius
+            const normalized =
+              (dx * dx) / (outerRadiusX * outerRadiusX) + (dy * dy) / (outerRadiusY * outerRadiusY)
+
+            return Number.isFinite(normalized) && normalized <= 1
+          }
+
+          return false
         })
 
       if (hitShape) {
@@ -787,23 +868,48 @@ export default function App() {
       if (interaction.mode === 'shape-resize') {
         const scenePoint = getScenePoint(event)
         const shape = shapesRef.current.find((item) => item.id === interaction.shapeId)
-        if (!shape || shape.kind !== 'ring') {
+        if (!shape) {
           return
         }
 
-        const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
-        const minRadius = Math.max(RING_MIN_RADIUS, shape.thickness / 2 + 4)
-        const nextRadius = Math.max(minRadius, distance)
+        if (shape.kind === 'ring') {
+          const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+          const minRadius = Math.max(RING_MIN_RADIUS, shape.thickness / 2 + 4)
+          const nextRadius = Math.max(minRadius, distance)
 
-        if (Math.abs(nextRadius - shape.radius) < 0.5) {
+          if (Math.abs(nextRadius - shape.radius) < 0.5) {
+            return
+          }
+
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: { radius: nextRadius },
+          })
           return
         }
 
-        dispatch({
-          type: 'UPDATE_SHAPE',
-          shapeId: shape.id,
-          updates: { radius: nextRadius },
-        })
+        if (shape.kind === 'ellipse') {
+          const deltaX = Math.abs(scenePoint.x - shape.x)
+          const deltaY = Math.abs(scenePoint.y - shape.y)
+          const minRadiusX = Math.max(ELLIPSE_MIN_RADIUS_X, shape.thickness / 2 + 6)
+          const minRadiusY = Math.max(ELLIPSE_MIN_RADIUS_Y, shape.thickness / 2 + 6)
+          const nextRadiusX = Math.max(minRadiusX, deltaX)
+          const nextRadiusY = Math.max(minRadiusY, deltaY)
+
+          if (
+            Math.abs(nextRadiusX - shape.radiusX) < 0.5 &&
+            Math.abs(nextRadiusY - shape.radiusY) < 0.5
+          ) {
+            return
+          }
+
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: { radiusX: nextRadiusX, radiusY: nextRadiusY },
+          })
+        }
         return
       }
 
@@ -988,6 +1094,33 @@ export default function App() {
         radius: RING_DEFAULT_RADIUS,
         thickness: RING_DEFAULT_THICKNESS,
         color: RING_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
+  const handleAddEllipse = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'ellipse',
+        x: worldCenterX,
+        y: worldCenterY,
+        radiusX: ELLIPSE_DEFAULT_RADIUS_X,
+        radiusY: ELLIPSE_DEFAULT_RADIUS_Y,
+        thickness: ELLIPSE_DEFAULT_THICKNESS,
+        color: ELLIPSE_DEFAULT_COLOR,
       },
     })
   }, [dispatch])
@@ -1285,37 +1418,74 @@ export default function App() {
       return []
     }
 
-    return value
-      .filter((item): item is MindMapShape => {
-        if (!item || typeof item !== 'object') {
-          return false
+    return value.reduce<MindMapShape[]>((accumulator, item) => {
+      if (!item || typeof item !== 'object') {
+        return accumulator
+      }
+
+      const shape = item as Partial<MindMapShape> & { kind?: string }
+
+      if (shape.kind === 'ring') {
+        if (
+          typeof shape.id !== 'string' ||
+          typeof shape.x !== 'number' ||
+          typeof shape.y !== 'number' ||
+          typeof shape.radius !== 'number' ||
+          typeof shape.thickness !== 'number'
+        ) {
+          return accumulator
         }
-        const shape = item as Partial<MindMapShape>
-        return (
-          shape.kind === 'ring' &&
-          typeof shape.id === 'string' &&
-          typeof shape.x === 'number' &&
-          typeof shape.y === 'number' &&
-          typeof shape.radius === 'number' &&
-          typeof shape.thickness === 'number' &&
-          typeof shape.color === 'string'
-        )
-      })
-      .map((shape) => {
+
         const radius = Math.max(RING_MIN_RADIUS, Math.abs(shape.radius))
         const thickness = Math.max(1, Math.abs(shape.thickness))
         const color = typeof shape.color === 'string' ? shape.color : RING_DEFAULT_COLOR
 
-        return {
+        accumulator.push({
           id: shape.id,
-          kind: 'ring' as const,
+          kind: 'ring',
           x: shape.x,
           y: shape.y,
           radius,
           thickness: Math.min(thickness, radius * 1.5),
           color,
+        })
+        return accumulator
+      }
+
+      if (shape.kind === 'ellipse') {
+        const ellipse = shape as Partial<MindMapEllipse>
+
+        if (
+          typeof ellipse.id !== 'string' ||
+          typeof ellipse.x !== 'number' ||
+          typeof ellipse.y !== 'number' ||
+          typeof ellipse.radiusX !== 'number' ||
+          typeof ellipse.radiusY !== 'number' ||
+          typeof ellipse.thickness !== 'number'
+        ) {
+          return accumulator
         }
-      })
+
+        const radiusX = Math.max(ELLIPSE_MIN_RADIUS_X, Math.abs(ellipse.radiusX))
+        const radiusY = Math.max(ELLIPSE_MIN_RADIUS_Y, Math.abs(ellipse.radiusY))
+        const thickness = Math.max(1, Math.abs(ellipse.thickness))
+        const color = typeof ellipse.color === 'string' ? ellipse.color : ELLIPSE_DEFAULT_COLOR
+        const maxThickness = Math.min(radiusX, radiusY)
+
+        accumulator.push({
+          id: ellipse.id,
+          kind: 'ellipse',
+          x: ellipse.x,
+          y: ellipse.y,
+          radiusX,
+          radiusY,
+          thickness: Math.min(thickness, maxThickness),
+          color,
+        })
+      }
+
+      return accumulator
+    }, [])
   }, [])
 
   const handleFileChange = useCallback(
@@ -1424,11 +1594,20 @@ export default function App() {
             <button type="button" onClick={handleAddRing} title="Add a ring to group related ideas">
               Add ring
             </button>
+            <button
+              type="button"
+              onClick={handleAddEllipse}
+              title="Add an ellipse to spotlight a region"
+            >
+              Add ellipse
+            </button>
           </div>
           <p className="mindmap-toolbar__shape-hint" aria-live="polite">
             {selectedRing
               ? `Ring radius: ${Math.round(selectedRing.radius)} px. Drag the golden square on the ring to resize it.`
-              : 'Add a ring to frame related ideas. Select the ring and drag the golden square to resize it.'}
+              : selectedEllipse
+              ? `Ellipse size: ${Math.round(selectedEllipse.radiusX * 2)} × ${Math.round(selectedEllipse.radiusY * 2)} px. Drag the golden square on the lower right to stretch it.`
+              : 'Add a ring or ellipse to highlight related thoughts. Select the shape and drag the golden square handle to resize it.'}
           </p>
         </div>
         <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">

@@ -25,7 +25,7 @@ export interface MindMapAnnotation {
   y: number
 }
 
-export type MindMapShape = {
+export interface MindMapRing {
   id: string
   kind: 'ring'
   x: number
@@ -34,6 +34,23 @@ export type MindMapShape = {
   thickness: number
   color: string
 }
+
+export interface MindMapEllipse {
+  id: string
+  kind: 'ellipse'
+  x: number
+  y: number
+  radiusX: number
+  radiusY: number
+  thickness: number
+  color: string
+}
+
+export type MindMapShape = MindMapRing | MindMapEllipse
+
+type MindMapShapeUpdate =
+  | Partial<Omit<MindMapRing, 'id' | 'kind'>>
+  | Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
 
 interface MindMapSnapshot {
   nodes: MindMapNode[]
@@ -67,7 +84,7 @@ type MindMapAction =
   | { type: 'MOVE_ANNOTATION'; annotationId: string; x: number; y: number }
   | { type: 'DELETE_ANNOTATION'; annotationId: string }
   | { type: 'ADD_SHAPE'; shape: MindMapShape }
-  | { type: 'UPDATE_SHAPE'; shapeId: string; updates: Partial<Omit<MindMapShape, 'id' | 'kind'>> }
+  | { type: 'UPDATE_SHAPE'; shapeId: string; updates: MindMapShapeUpdate }
   | { type: 'MOVE_SHAPE'; shapeId: string; x: number; y: number }
   | { type: 'DELETE_SHAPE'; shapeId: string }
   | { type: 'UNDO' }
@@ -171,28 +188,59 @@ function isMindMapShape(value: unknown): value is MindMapShape {
     return false
   }
 
-  const shape = value as Partial<MindMapShape>
+  const shape = value as Partial<MindMapShape> & { kind?: string }
   if (typeof shape.id !== 'string') {
     return false
   }
 
-  if (shape.kind !== 'ring') {
-    return false
+  if (shape.kind === 'ring') {
+    const ring = shape as Partial<MindMapRing>
+
+    if (typeof ring.x !== 'number' || typeof ring.y !== 'number') {
+      return false
+    }
+
+    if (typeof ring.radius !== 'number' || typeof ring.thickness !== 'number') {
+      return false
+    }
+
+    if (typeof ring.color !== 'string') {
+      return false
+    }
+
+    return Number.isFinite(ring.radius) && Number.isFinite(ring.thickness) && ring.thickness > 0
   }
 
-  if (typeof shape.x !== 'number' || typeof shape.y !== 'number') {
-    return false
+  if (shape.kind === 'ellipse') {
+    const ellipse = shape as Partial<MindMapEllipse>
+
+    if (typeof ellipse.x !== 'number' || typeof ellipse.y !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.radiusX !== 'number' || typeof ellipse.radiusY !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.thickness !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.color !== 'string') {
+      return false
+    }
+
+    return (
+      Number.isFinite(ellipse.radiusX) &&
+      Number.isFinite(ellipse.radiusY) &&
+      ellipse.radiusX > 0 &&
+      ellipse.radiusY > 0 &&
+      Number.isFinite(ellipse.thickness) &&
+      ellipse.thickness > 0
+    )
   }
 
-  if (typeof shape.radius !== 'number' || typeof shape.thickness !== 'number') {
-    return false
-  }
-
-  if (typeof shape.color !== 'string') {
-    return false
-  }
-
-  return Number.isFinite(shape.radius) && Number.isFinite(shape.thickness) && shape.thickness > 0
+  return false
 }
 
 function loadPersistedState(): MindMapState {
@@ -468,11 +516,19 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       })
     }
     case 'UPDATE_SHAPE': {
-      const nextShapes = state.shapes.map((shape) =>
-        shape.id === action.shapeId
-          ? { ...shape, ...action.updates, id: shape.id, kind: shape.kind }
-          : shape,
-      )
+      const nextShapes = state.shapes.map((shape) => {
+        if (shape.id !== action.shapeId) {
+          return shape
+        }
+
+        if (shape.kind === 'ring') {
+          const updates = action.updates as Partial<Omit<MindMapRing, 'id' | 'kind'>>
+          return { ...shape, ...updates, id: shape.id, kind: 'ring' as const }
+        }
+
+        const updates = action.updates as Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
+        return { ...shape, ...updates, id: shape.id, kind: 'ellipse' as const }
+      })
       return commitState(state, { shapes: nextShapes })
     }
     case 'MOVE_SHAPE': {
