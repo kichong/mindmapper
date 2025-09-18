@@ -821,10 +821,11 @@ export default function App() {
           if (shape.kind === 'ring') {
             const radius = Math.max(shape.radius, 0)
             const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
-            const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
-            const outerRadius = radius + halfThickness
+            const hitBand = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
+            const outerRadius = radius + hitBand
+            const innerRadius = Math.max(0, radius - hitBand)
 
-            return distance <= outerRadius
+            return distance <= outerRadius && distance >= innerRadius
           }
 
           if (shape.kind === 'ellipse') {
@@ -832,13 +833,28 @@ export default function App() {
             const radiusY = Math.max(shape.radiusY, 1)
             const dx = scenePoint.x - shape.x
             const dy = scenePoint.y - shape.y
-            const outerRadiusX = radiusX + ELLIPSE_HIT_PADDING
-            const outerRadiusY = radiusY + ELLIPSE_HIT_PADDING
+            const hitBand = Math.max(1, shape.thickness / 2 + ELLIPSE_HIT_PADDING)
+            const outerRadiusX = radiusX + hitBand
+            const outerRadiusY = radiusY + hitBand
 
-            const normalized =
+            const outerNormalized =
               (dx * dx) / (outerRadiusX * outerRadiusX) + (dy * dy) / (outerRadiusY * outerRadiusY)
 
-            return Number.isFinite(normalized) && normalized <= 1
+            if (!Number.isFinite(outerNormalized) || outerNormalized > 1) {
+              return false
+            }
+
+            const innerRadiusX = radiusX - hitBand
+            const innerRadiusY = radiusY - hitBand
+
+            if (innerRadiusX <= 0 || innerRadiusY <= 0) {
+              return true
+            }
+
+            const innerNormalized =
+              (dx * dx) / (innerRadiusX * innerRadiusX) + (dy * dy) / (innerRadiusY * innerRadiusY)
+
+            return !Number.isFinite(innerNormalized) || innerNormalized >= 1
           }
 
           return false
