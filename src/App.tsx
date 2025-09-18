@@ -1,25 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
+  TEXT_SIZE_CHOICES,
+  normalizeTextSize,
   type MindMapAnnotation,
   type MindMapEllipse,
   type MindMapNode,
   type MindMapShape,
+  type TextSize,
   useMindMap,
 } from './state/MindMapContext'
 import './App.css'
 
 const NODE_BASE_RADIUS = 40
 const NODE_TEXT_PADDING = 18
-const NODE_FONT = '16px Inter, system-ui, sans-serif'
+const NODE_FONT_SIZES: Record<TextSize, number> = {
+  small: 14,
+  medium: 16,
+  large: 20,
+}
 const LINK_DISTANCE = 160
 const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
-const MIN_ZOOM = 0.5
+const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
 const KEYBOARD_PAN_STEP = 80
 const AUTO_CENTER_PADDING = 160
-const ANNOTATION_FONT = '18px Inter, system-ui, sans-serif'
-const ANNOTATION_LINE_HEIGHT = 24
+const ANNOTATION_FONT_SIZES: Record<TextSize, number> = {
+  small: 16,
+  medium: 18,
+  large: 22,
+}
+const ANNOTATION_LINE_HEIGHTS: Record<TextSize, number> = {
+  small: 22,
+  medium: 26,
+  large: 30,
+}
 const ANNOTATION_PADDING_X = 14
 const ANNOTATION_PADDING_Y = 10
 const ANNOTATION_MIN_WIDTH = 120
@@ -44,6 +59,19 @@ type ViewTransform = {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+const NODE_FONT_FAMILY = 'Inter, system-ui, sans-serif'
+const ANNOTATION_FONT_FAMILY = 'Inter, system-ui, sans-serif'
+
+const getNodeFont = (size: TextSize) => `${NODE_FONT_SIZES[size]}px ${NODE_FONT_FAMILY}`
+const getAnnotationFont = (size: TextSize) => `${ANNOTATION_FONT_SIZES[size]}px ${ANNOTATION_FONT_FAMILY}`
+const getAnnotationLineHeight = (size: TextSize) => ANNOTATION_LINE_HEIGHTS[size]
+
+const TEXT_SIZE_LABELS: Record<TextSize, string> = {
+  small: 'Small',
+  medium: 'Medium',
+  large: 'Large',
+}
 
 type InteractionState =
   | {
@@ -86,6 +114,12 @@ type InteractionState =
 type CanvasSize = {
   width: number
   height: number
+}
+
+type AnnotationMetrics = {
+  width: number
+  height: number
+  font: string
 }
 
 function calculateFitView(
@@ -179,6 +213,8 @@ export default function App() {
 
   const selectedRing = selectedShape && selectedShape.kind === 'ring' ? selectedShape : null
   const selectedEllipse = selectedShape && selectedShape.kind === 'ellipse' ? selectedShape : null
+  const selectedNodeTextSize: TextSize = selectedNode?.textSize ?? 'medium'
+  const selectedAnnotationTextSize: TextSize = selectedAnnotation?.textSize ?? 'medium'
 
   const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
   const [annotationEditText, setAnnotationEditText] = useState(
@@ -202,7 +238,8 @@ export default function App() {
       }
 
       const previousFont = context.font
-      context.font = NODE_FONT
+      const textSize = normalizeTextSize(node.textSize)
+      context.font = getNodeFont(textSize)
       const label = node.text.length > 0 ? node.text : 'New Idea'
       const metrics = context.measureText(label)
       context.font = previousFont
@@ -224,26 +261,32 @@ export default function App() {
     })
   }, [])
 
-  const measureAnnotation = useCallback((annotation: MindMapAnnotation) => {
-    const context = contextRef.current
-    if (!context) {
-      return null
-    }
+  const measureAnnotation = useCallback(
+    (annotation: MindMapAnnotation): AnnotationMetrics | null => {
+      const context = contextRef.current
+      if (!context) {
+        return null
+      }
 
-    const previousFont = context.font
-    context.font = ANNOTATION_FONT
-    const content = annotation.text.length > 0 ? annotation.text : 'New text'
-    const metrics = context.measureText(content)
-    const textWidth = Math.max(
-      metrics.width,
-      ANNOTATION_MIN_WIDTH - ANNOTATION_PADDING_X * 2,
-    )
-    const width = textWidth + ANNOTATION_PADDING_X * 2
-    const height = ANNOTATION_LINE_HEIGHT + ANNOTATION_PADDING_Y * 2
-    context.font = previousFont
+      const previousFont = context.font
+      const textSize = normalizeTextSize(annotation.textSize)
+      const annotationFont = getAnnotationFont(textSize)
+      context.font = annotationFont
+      const content = annotation.text.length > 0 ? annotation.text : 'New text'
+      const metrics = context.measureText(content)
+      const textWidth = Math.max(
+        metrics.width,
+        ANNOTATION_MIN_WIDTH - ANNOTATION_PADDING_X * 2,
+      )
+      const width = textWidth + ANNOTATION_PADDING_X * 2
+      const lineHeight = getAnnotationLineHeight(textSize)
+      const height = lineHeight + ANNOTATION_PADDING_Y * 2
+      context.font = previousFont
 
-    return { width, height }
-  }, [])
+      return { width, height, font: annotationFont }
+    },
+    [],
+  )
 
   useEffect(() => {
     setEditText(selectedNode?.text ?? '')
@@ -399,22 +442,24 @@ export default function App() {
 
       context.fillStyle = '#ffffff'
       const previousFont = context.font
-      context.font = NODE_FONT
+      const nodeTextSize = normalizeTextSize(node.textSize)
+      context.font = getNodeFont(nodeTextSize)
       context.textAlign = 'center'
       context.textBaseline = 'middle'
       context.fillText(node.text, nodeX, nodeY)
       context.font = previousFont
     })
 
-    context.font = ANNOTATION_FONT
     context.textAlign = 'center'
     context.textBaseline = 'middle'
 
     annotationsToDraw.forEach((annotation) => {
       const metrics = measureAnnotation(annotation)
+      const annotationTextSize = normalizeTextSize(annotation.textSize)
+      const defaultHeight =
+        getAnnotationLineHeight(annotationTextSize) + ANNOTATION_PADDING_Y * 2
       const widthWithPadding = metrics?.width ?? ANNOTATION_MIN_WIDTH
-      const heightWithPadding =
-        metrics?.height ?? ANNOTATION_LINE_HEIGHT + ANNOTATION_PADDING_Y * 2
+      const heightWithPadding = metrics?.height ?? defaultHeight
       const rectX = annotation.x - widthWithPadding / 2
       const rectY = annotation.y - heightWithPadding / 2
 
@@ -427,11 +472,15 @@ export default function App() {
       context.strokeRect(rectX, rectY, widthWithPadding, heightWithPadding)
 
       context.fillStyle = '#f8fafc'
+      const previousFont = context.font
+      const annotationFont = metrics?.font ?? getAnnotationFont(annotationTextSize)
+      context.font = annotationFont
       context.fillText(
         annotation.text.length > 0 ? annotation.text : 'New text',
         annotation.x,
         annotation.y,
       )
+      context.font = previousFont
     })
 
     context.restore()
@@ -1040,6 +1089,7 @@ export default function App() {
         x: nextX,
         y: nextY,
         color: nodeColor,
+        textSize: 'medium',
       },
     })
   }, [dispatch, nodes, selectedNode])
@@ -1063,6 +1113,7 @@ export default function App() {
         text: 'New text',
         x: worldCenterX,
         y: worldCenterY,
+        textSize: 'medium',
       },
     })
   }, [dispatch])
@@ -1378,6 +1429,7 @@ export default function App() {
       .map((node) => ({
         ...node,
         color: typeof node.color === 'string' ? node.color : '#4f46e5',
+        textSize: normalizeTextSize((node as { textSize?: unknown }).textSize),
       }))
 
     if (sanitized.length === 0) {
@@ -1405,7 +1457,10 @@ export default function App() {
           typeof annotation.y === 'number'
         )
       })
-      .map((annotation) => ({ ...annotation }))
+      .map((annotation) => ({
+        ...annotation,
+        textSize: normalizeTextSize((annotation as { textSize?: unknown }).textSize),
+      }))
   }, [])
 
   const sanitizeImportedShapes = useCallback((value: unknown) => {
@@ -1571,6 +1626,38 @@ export default function App() {
     [dispatch, selectedAnnotationId],
   )
 
+  const handleNodeTextSizeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      if (!selectedNodeId) {
+        return
+      }
+
+      const nextSize = normalizeTextSize(event.target.value)
+      dispatch({
+        type: 'UPDATE_NODE',
+        nodeId: selectedNodeId,
+        updates: { textSize: nextSize },
+      })
+    },
+    [dispatch, selectedNodeId],
+  )
+
+  const handleAnnotationTextSizeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      if (!selectedAnnotationId) {
+        return
+      }
+
+      const nextSize = normalizeTextSize(event.target.value)
+      dispatch({
+        type: 'UPDATE_ANNOTATION',
+        annotationId: selectedAnnotationId,
+        updates: { textSize: nextSize },
+      })
+    },
+    [dispatch, selectedAnnotationId],
+  )
+
   return (
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
@@ -1606,34 +1693,70 @@ export default function App() {
           </p>
         </div>
         <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
-          <label className="mindmap-toolbar__text-editor">
-            <span>Edit node</span>
-            <input
-              type="text"
-              value={editText}
-              onChange={handleNodeTextChange}
-              placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
-              disabled={!selectedNode}
-              aria-label="Selected node text"
-              className="mindmap-toolbar__text-input"
-              ref={nodeInputRef}
-            />
-          </label>
-          <label className="mindmap-toolbar__text-editor">
-            <span>Edit text</span>
-            <input
-              type="text"
-              value={annotationEditText}
-              onChange={handleAnnotationTextChange}
-              placeholder={
-                selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
-              }
-              disabled={!selectedAnnotation}
-              aria-label="Selected text box content"
-              className="mindmap-toolbar__text-input"
-              ref={annotationInputRef}
-            />
-          </label>
+          <div className="mindmap-toolbar__text-editor">
+            <label className="mindmap-toolbar__text-control">
+              <span className="mindmap-toolbar__text-label">Edit node</span>
+              <input
+                type="text"
+                value={editText}
+                onChange={handleNodeTextChange}
+                placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
+                disabled={!selectedNode}
+                aria-label="Selected node text"
+                className="mindmap-toolbar__text-input"
+                ref={nodeInputRef}
+              />
+            </label>
+            <label className="mindmap-toolbar__text-control">
+              <span className="mindmap-toolbar__text-label">Text size</span>
+              <select
+                value={selectedNodeTextSize}
+                onChange={handleNodeTextSizeChange}
+                disabled={!selectedNode}
+                aria-label="Selected node text size"
+                className="mindmap-toolbar__text-select"
+              >
+                {TEXT_SIZE_CHOICES.map((size) => (
+                  <option key={size} value={size}>
+                    {TEXT_SIZE_LABELS[size]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mindmap-toolbar__text-editor">
+            <label className="mindmap-toolbar__text-control">
+              <span className="mindmap-toolbar__text-label">Edit text</span>
+              <input
+                type="text"
+                value={annotationEditText}
+                onChange={handleAnnotationTextChange}
+                placeholder={
+                  selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
+                }
+                disabled={!selectedAnnotation}
+                aria-label="Selected text box content"
+                className="mindmap-toolbar__text-input"
+                ref={annotationInputRef}
+              />
+            </label>
+            <label className="mindmap-toolbar__text-control">
+              <span className="mindmap-toolbar__text-label">Text size</span>
+              <select
+                value={selectedAnnotationTextSize}
+                onChange={handleAnnotationTextSizeChange}
+                disabled={!selectedAnnotation}
+                aria-label="Selected text box size"
+                className="mindmap-toolbar__text-select"
+              >
+                {TEXT_SIZE_CHOICES.map((size) => (
+                  <option key={size} value={size}>
+                    {TEXT_SIZE_LABELS[size]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       <div className="mindmap-io-panel">

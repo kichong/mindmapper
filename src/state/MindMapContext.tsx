@@ -8,6 +8,16 @@ import {
   type Dispatch,
 } from 'react'
 
+export type TextSize = 'small' | 'medium' | 'large'
+
+export const TEXT_SIZE_CHOICES: readonly TextSize[] = ['small', 'medium', 'large']
+
+export function normalizeTextSize(value: unknown): TextSize {
+  return value === 'small' || value === 'medium' || value === 'large'
+    ? (value as TextSize)
+    : 'medium'
+}
+
 
 export interface MindMapNode {
   id: string
@@ -16,6 +26,7 @@ export interface MindMapNode {
   x: number
   y: number
   color: string
+  textSize: TextSize
 }
 
 export interface MindMapAnnotation {
@@ -23,6 +34,7 @@ export interface MindMapAnnotation {
   text: string
   x: number
   y: number
+  textSize: TextSize
 }
 
 export interface MindMapRing {
@@ -118,6 +130,7 @@ const initialState: MindMapState = {
       x: 0,
       y: 0,
       color: '#4f46e5',
+      textSize: 'medium',
     },
   ],
   annotations: [],
@@ -159,6 +172,10 @@ function isMindMapNode(value: unknown): value is MindMapNode {
     return false
   }
 
+  const normalizedSize = normalizeTextSize((node as { textSize?: unknown }).textSize)
+  const typedNode = node as { textSize: TextSize }
+  typedNode.textSize = normalizedSize
+
   return true
 }
 
@@ -179,6 +196,10 @@ function isMindMapAnnotation(value: unknown): value is MindMapAnnotation {
   if (typeof annotation.x !== 'number' || typeof annotation.y !== 'number') {
     return false
   }
+
+  const normalizedSize = normalizeTextSize((annotation as { textSize?: unknown }).textSize)
+  const typedAnnotation = annotation as { textSize: TextSize }
+  typedAnnotation.textSize = normalizedSize
 
   return true
 }
@@ -432,7 +453,8 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         state.nodes[0]?.text !== 'Root' ||
         state.nodes[0]?.x !== 0 ||
         state.nodes[0]?.y !== 0 ||
-        state.nodes[0]?.color !== '#4f46e5'
+        state.nodes[0]?.color !== '#4f46e5' ||
+        state.nodes[0]?.textSize !== 'medium'
 
       const hasShapes = state.shapes.length > 0
 
@@ -447,6 +469,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         x: 0,
         y: 0,
         color: '#4f46e5',
+        textSize: 'medium',
       }
 
       return commitState(state, {
