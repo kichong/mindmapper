@@ -14,9 +14,9 @@ import './App.css'
 const NODE_BASE_RADIUS = 40
 const NODE_TEXT_PADDING = 18
 const NODE_FONT_SIZES: Record<TextSize, number> = {
-  small: 13,
-  medium: 18,
-  large: 24,
+  small: 12,
+  medium: 20,
+  large: 30,
 }
 const LINK_DISTANCE = 160
 const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
@@ -26,14 +26,14 @@ const ZOOM_STEP = 1.2
 const KEYBOARD_PAN_STEP = 80
 const AUTO_CENTER_PADDING = 160
 const ANNOTATION_FONT_SIZES: Record<TextSize, number> = {
-  small: 15,
-  medium: 21,
-  large: 28,
+  small: 16,
+  medium: 26,
+  large: 38,
 }
 const ANNOTATION_LINE_HEIGHTS: Record<TextSize, number> = {
-  small: 24,
-  medium: 30,
-  large: 38,
+  small: 26,
+  medium: 40,
+  large: 56,
 }
 const ANNOTATION_PADDING_X = 14
 const ANNOTATION_PADDING_Y = 10
@@ -177,8 +177,7 @@ export default function App() {
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
   const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const nodeInputRef = useRef<HTMLInputElement | null>(null)
-  const annotationInputRef = useRef<HTMLInputElement | null>(null)
+  const textInputRef = useRef<HTMLInputElement | null>(null)
   const {
     state: { nodes, annotations, shapes, selectedNodeId, selectedAnnotationId, selectedShapeId, history },
     dispatch,
@@ -211,15 +210,30 @@ export default function App() {
     [shapes, selectedShapeId],
   )
 
-  const selectedRing = selectedShape && selectedShape.kind === 'ring' ? selectedShape : null
-  const selectedEllipse = selectedShape && selectedShape.kind === 'ellipse' ? selectedShape : null
-  const selectedNodeTextSize: TextSize = selectedNode?.textSize ?? 'medium'
-  const selectedAnnotationTextSize: TextSize = selectedAnnotation?.textSize ?? 'medium'
+  const selectedTextTarget = useMemo(() => {
+    if (selectedNode) {
+      return {
+        kind: 'node' as const,
+        id: selectedNode.id,
+        text: selectedNode.text,
+        textSize: selectedNode.textSize,
+      }
+    }
 
-  const [editText, setEditText] = useState(() => selectedNode?.text ?? '')
-  const [annotationEditText, setAnnotationEditText] = useState(
-    () => selectedAnnotation?.text ?? '',
-  )
+    if (selectedAnnotation) {
+      return {
+        kind: 'annotation' as const,
+        id: selectedAnnotation.id,
+        text: selectedAnnotation.text,
+        textSize: selectedAnnotation.textSize,
+      }
+    }
+
+    return null
+  }, [selectedAnnotation, selectedNode])
+
+  const [textDraft, setTextDraft] = useState(() => selectedTextTarget?.text ?? '')
+  const selectedTextSize: TextSize = selectedTextTarget?.textSize ?? 'medium'
   const [viewTransform, setViewTransform] = useState<ViewTransform>(() => ({
     scale: 1,
     offsetX: 0,
@@ -290,12 +304,8 @@ export default function App() {
   )
 
   useEffect(() => {
-    setEditText(selectedNode?.text ?? '')
-  }, [selectedNode?.id, selectedNode?.text])
-
-  useEffect(() => {
-    setAnnotationEditText(selectedAnnotation?.text ?? '')
-  }, [selectedAnnotation?.id, selectedAnnotation?.text])
+    setTextDraft(selectedTextTarget?.text ?? '')
+  }, [selectedTextTarget])
 
   const closeExportMenu = useCallback(() => {
     setExportMenuOpen(false)
@@ -1021,8 +1031,8 @@ export default function App() {
         dispatch({ type: 'SELECT_NODE', nodeId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
-        setAnnotationEditText(hitAnnotation.text)
-        focusInput(annotationInputRef.current)
+        setTextDraft(hitAnnotation.text)
+        focusInput(textInputRef.current)
         event.preventDefault()
         return
       }
@@ -1035,8 +1045,8 @@ export default function App() {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
-        setEditText(hitNode.text)
-        focusInput(nodeInputRef.current)
+        setTextDraft(hitNode.text)
+        focusInput(textInputRef.current)
         event.preventDefault()
       }
     }
@@ -1599,72 +1609,79 @@ export default function App() {
   const canZoomOut = viewTransform.scale > MIN_ZOOM + 0.001
   const zoomPercentage = Math.round(viewTransform.scale * 100)
 
-  const handleNodeTextChange = useCallback(
+  const handleTextChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const value = event.target.value
-      setEditText(value)
+      setTextDraft(value)
 
-      if (selectedNodeId) {
+      if (!selectedTextTarget) {
+        return
+      }
+
+      if (selectedTextTarget.kind === 'node') {
         dispatch({
           type: 'UPDATE_NODE',
-          nodeId: selectedNodeId,
+          nodeId: selectedTextTarget.id,
           updates: { text: value },
         })
-      }
-    },
-    [dispatch, selectedNodeId],
-  )
-
-  const handleAnnotationTextChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const value = event.target.value
-      setAnnotationEditText(value)
-
-      if (selectedAnnotationId) {
-        dispatch({
-          type: 'UPDATE_ANNOTATION',
-          annotationId: selectedAnnotationId,
-          updates: { text: value },
-        })
-      }
-    },
-    [dispatch, selectedAnnotationId],
-  )
-
-  const handleNodeTextSizeChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      if (!selectedNodeId) {
         return
       }
 
-      const nextSize = normalizeTextSize(event.target.value)
-      dispatch({
-        type: 'UPDATE_NODE',
-        nodeId: selectedNodeId,
-        updates: { textSize: nextSize },
-      })
-    },
-    [dispatch, selectedNodeId],
-  )
-
-  const handleAnnotationTextSizeChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      if (!selectedAnnotationId) {
-        return
-      }
-
-      const nextSize = normalizeTextSize(event.target.value)
       dispatch({
         type: 'UPDATE_ANNOTATION',
-        annotationId: selectedAnnotationId,
+        annotationId: selectedTextTarget.id,
+        updates: { text: value },
+      })
+    },
+    [dispatch, selectedTextTarget],
+  )
+
+  const handleTextSizeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      if (!selectedTextTarget) {
+        return
+      }
+
+      const nextSize = normalizeTextSize(event.target.value)
+
+      if (selectedTextTarget.kind === 'node') {
+        dispatch({
+          type: 'UPDATE_NODE',
+          nodeId: selectedTextTarget.id,
+          updates: { textSize: nextSize },
+        })
+        return
+      }
+
+      dispatch({
+        type: 'UPDATE_ANNOTATION',
+        annotationId: selectedTextTarget.id,
         updates: { textSize: nextSize },
       })
     },
-    [dispatch, selectedAnnotationId],
+    [dispatch, selectedTextTarget],
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
+  const isEditingNode = selectedTextTarget?.kind === 'node'
+  const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
+  const textEditorLabel = isEditingNode ? 'Node text' : isEditingAnnotation ? 'Text box text' : 'Edit text'
+  const textEditorPlaceholder = isEditingNode
+    ? 'Type here to rename the node'
+    : isEditingAnnotation
+    ? 'Type here to update the text box'
+    : 'Select a node or text box first'
+  const textInputAriaLabel = isEditingNode
+    ? 'Selected node text'
+    : isEditingAnnotation
+    ? 'Selected text box text'
+    : 'Edit text'
+  const textSizeAriaLabel = isEditingNode
+    ? 'Selected node text size'
+    : isEditingAnnotation
+    ? 'Selected text box size'
+    : 'Text size'
 
   return (
     <div className="app-shell">
@@ -1680,24 +1697,24 @@ export default function App() {
             aria-label="Toggle toolbar visibility"
             title={isToolbarCollapsed ? 'Show toolbar controls' : 'Hide toolbar controls'}
           >
-            {isToolbarCollapsed ? 'Show tools ▼' : 'Hide tools ▲'}
+            {isToolbarCollapsed ? '▾' : '▴'}
           </button>
           <div className="mindmap-toolbar__header-actions">
             <button type="button" onClick={handleAddChild} title="Enter">
               Add child
             </button>
-            <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
-              Add text
+            <button type="button" onClick={handleAddAnnotation} title="Add a floating text box">
+              Textbox
             </button>
             <button type="button" onClick={handleAddRing} title="Add a ring to group related ideas">
-              Add ring
+              Ring
             </button>
             <button
               type="button"
               onClick={handleAddEllipse}
               title="Add an ellipse to spotlight a region"
             >
-              Add ellipse
+              Ellipse
             </button>
           </div>
         </div>
@@ -1705,69 +1722,29 @@ export default function App() {
           <div className="mindmap-toolbar__body" id={toolbarBodyId}>
             <div className="mindmap-toolbar__shape-panel">
               <span className="mindmap-toolbar__section-title">Shapes</span>
-              <p className="mindmap-toolbar__shape-hint" aria-live="polite">
-                {selectedRing
-                  ? `Ring radius: ${Math.round(selectedRing.radius)} px. Drag the golden square on the ring to resize it.`
-                  : selectedEllipse
-                  ? `Ellipse size: ${Math.round(selectedEllipse.radiusX * 2)} × ${Math.round(selectedEllipse.radiusY * 2)} px. Drag the golden square on the lower right to stretch it.`
-                  : 'Add a ring or ellipse to highlight related thoughts. Select the shape and drag the golden square handle to resize it.'}
-              </p>
             </div>
             <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
               <div className="mindmap-toolbar__text-editor">
                 <label className="mindmap-toolbar__text-control">
-                  <span className="mindmap-toolbar__text-label">Edit node</span>
+                  <span className="mindmap-toolbar__text-label">{textEditorLabel}</span>
                   <input
                     type="text"
-                    value={editText}
-                    onChange={handleNodeTextChange}
-                    placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
-                    disabled={!selectedNode}
-                    aria-label="Selected node text"
+                    value={textDraft}
+                    onChange={handleTextChange}
+                    placeholder={textEditorPlaceholder}
+                    disabled={!selectedTextTarget}
+                    aria-label={textInputAriaLabel}
                     className="mindmap-toolbar__text-input"
-                    ref={nodeInputRef}
+                    ref={textInputRef}
                   />
                 </label>
                 <label className="mindmap-toolbar__text-control">
                   <span className="mindmap-toolbar__text-label">Text size</span>
                   <select
-                    value={selectedNodeTextSize}
-                    onChange={handleNodeTextSizeChange}
-                    disabled={!selectedNode}
-                    aria-label="Selected node text size"
-                    className="mindmap-toolbar__text-select"
-                  >
-                    {TEXT_SIZE_CHOICES.map((size) => (
-                      <option key={size} value={size}>
-                        {TEXT_SIZE_LABELS[size]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="mindmap-toolbar__text-editor">
-                <label className="mindmap-toolbar__text-control">
-                  <span className="mindmap-toolbar__text-label">Edit text</span>
-                  <input
-                    type="text"
-                    value={annotationEditText}
-                    onChange={handleAnnotationTextChange}
-                    placeholder={
-                      selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
-                    }
-                    disabled={!selectedAnnotation}
-                    aria-label="Selected text box content"
-                    className="mindmap-toolbar__text-input"
-                    ref={annotationInputRef}
-                  />
-                </label>
-                <label className="mindmap-toolbar__text-control">
-                  <span className="mindmap-toolbar__text-label">Text size</span>
-                  <select
-                    value={selectedAnnotationTextSize}
-                    onChange={handleAnnotationTextSizeChange}
-                    disabled={!selectedAnnotation}
-                    aria-label="Selected text box size"
+                    value={selectedTextSize}
+                    onChange={handleTextSizeChange}
+                    disabled={!selectedTextTarget}
+                    aria-label={textSizeAriaLabel}
                     className="mindmap-toolbar__text-select"
                   >
                     {TEXT_SIZE_CHOICES.map((size) => (

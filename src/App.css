@@ -137,13 +137,6 @@
   color: #e2e8f0;
 }
 
-.mindmap-toolbar__shape-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  color: #cbd5f5;
-  line-height: 1.45;
-}
-
 .mindmap-toolbar__io-button {
   background: #38bdf8;
   color: #0f172a;
