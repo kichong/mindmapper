@@ -65,12 +65,12 @@ const ARROW_DEFAULT_WIDTH = 340
 const ARROW_DEFAULT_HEIGHT = 180
 const ARROW_MIN_WIDTH = 36
 const ARROW_MIN_HEIGHT = 6
-const ARROW_DEFAULT_THICKNESS = 60
+const ARROW_DEFAULT_THICKNESS = 48
 const ARROW_MIN_THICKNESS = 2
 const ARROW_HIT_PADDING = 10
 const ARROW_DEFAULT_COLOR = '#f97316'
-const ARROW_HEAD_RATIO = 0.34
-const ARROW_MIN_HEAD_LENGTH = 14
+const ARROW_HEAD_RATIO = 0.6
+const ARROW_MIN_HEAD_LENGTH = 20
 const ARROW_MIN_SHAFT_HALF_HEIGHT = 1.2
 const ARROW_DEFAULT_ANGLE = 0
 const LINE_DEFAULT_LENGTH = 280
@@ -2506,10 +2506,7 @@ export default function App() {
               className="mindmap-toolbar__icon-button"
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <path
-                  d="M5 9.5h7l-2.2-2.4 1.6-1.6 5.8 6-5.8 6-1.6-1.6 2.2-2.4H5z"
-                  fill="#f97316"
-                />
+                <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
               </svg>
               <span className="visually-hidden">Arrow</span>
             </button>

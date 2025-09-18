@@ -28,7 +28,7 @@
   color: #f8fafc;
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
-  width: min(26rem, calc(100vw - 2.5rem));
+  width: min(44rem, calc(100vw - 2.5rem));
   z-index: 5;
 }
 
@@ -47,6 +47,8 @@
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease;
   line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mindmap-toolbar button.mindmap-toolbar__icon-button {
@@ -91,15 +93,16 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .mindmap-toolbar__header-actions {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex-wrap: wrap;
-  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  flex: 1 0 auto;
 }
 
 .mindmap-toolbar__toggle {
