@@ -69,9 +69,12 @@ const ARROW_DEFAULT_THICKNESS = 48
 const ARROW_MIN_THICKNESS = 2
 const ARROW_HIT_PADDING = 10
 const ARROW_DEFAULT_COLOR = '#f97316'
-const ARROW_HEAD_RATIO = 0.6
-const ARROW_MIN_HEAD_LENGTH = 20
+const ARROW_HEAD_RATIO = 0.72
+const ARROW_MIN_HEAD_LENGTH = 26
 const ARROW_MIN_SHAFT_HALF_HEIGHT = 1.2
+const ARROW_HEAD_BASE_RATIO = 2.8
+const ARROW_HEAD_BASE_PADDING = 6
+const ARROW_MIN_HEAD_HALF_HEIGHT = 7
 const ARROW_DEFAULT_ANGLE = 0
 const LINE_DEFAULT_LENGTH = 280
 const LINE_DEFAULT_THICKNESS = 8
@@ -126,6 +129,28 @@ const rotateAndTranslate = (point: Point, center: Point, angle: number): Point =
   }
 }
 
+const enforceArrowHeadHeights = (rawHalfHeight: number, halfThickness: number) => {
+  // Keep the arrow head leg (the perpendicular edge) bold enough to read
+  const limitedShaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(halfThickness, rawHalfHeight),
+  )
+
+  const headHalfHeight = Math.max(
+    rawHalfHeight,
+    limitedShaftHalfHeight * ARROW_HEAD_BASE_RATIO,
+    limitedShaftHalfHeight + ARROW_HEAD_BASE_PADDING,
+    ARROW_MIN_HEAD_HALF_HEIGHT,
+  )
+
+  const shaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(halfThickness, headHalfHeight),
+  )
+
+  return { headHalfHeight, shaftHalfHeight }
+}
+
 const toLocalCoordinates = (point: Point, center: Point, angle: number): Point => {
   const dx = point.x - center.x
   const dy = point.y - center.y
@@ -139,18 +164,18 @@ const toLocalCoordinates = (point: Point, center: Point, angle: number): Point =
 
 const getArrowGeometry = (shape: MindMapArrow): ArrowGeometry => {
   const halfWidth = Math.max(Math.abs(shape.width) / 2, ARROW_MIN_WIDTH / 2)
-  const halfHeight = Math.max(Math.abs(shape.height) / 2, ARROW_MIN_HEIGHT / 2)
+  const rawHalfHeight = Math.max(Math.abs(shape.height) / 2, ARROW_MIN_HEIGHT / 2)
   const baseHeadLength = Math.max(halfWidth * ARROW_HEAD_RATIO, ARROW_MIN_HEAD_LENGTH)
   const headLength = Math.min(baseHeadLength, halfWidth)
-  const rawThickness = Math.max(Math.abs(shape.thickness) / 2, ARROW_MIN_THICKNESS / 2)
-  const shaftHalfHeight = Math.max(
-    ARROW_MIN_SHAFT_HALF_HEIGHT,
-    Math.min(rawThickness, halfHeight),
+  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, ARROW_MIN_THICKNESS / 2)
+  const { headHalfHeight, shaftHalfHeight } = enforceArrowHeadHeights(
+    rawHalfHeight,
+    halfThickness,
   )
 
   return {
     halfWidth,
-    halfHeight,
+    halfHeight: headHalfHeight,
     headLength,
     shaftHalfHeight,
   }
@@ -1447,13 +1472,13 @@ export default function App() {
           const minHalfWidth = ARROW_MIN_WIDTH / 2
           const minHalfHeight = ARROW_MIN_HEIGHT / 2
           const nextHalfWidth = Math.max(minHalfWidth, Math.abs(localPoint.x))
-          const nextHalfHeight = Math.max(minHalfHeight, Math.abs(localPoint.y))
+          const rawHalfHeight = Math.max(minHalfHeight, Math.abs(localPoint.y))
           const nextWidth = nextHalfWidth * 2
-          const nextHeight = nextHalfHeight * 2
-          const nextThickness = Math.max(
-            ARROW_MIN_THICKNESS,
-            Math.min(shape.thickness, nextHeight),
-          )
+          const thicknessLimit = Math.min(shape.thickness, rawHalfHeight * 2)
+          const nextThickness = Math.max(ARROW_MIN_THICKNESS, thicknessLimit)
+          const halfThickness = Math.max(nextThickness / 2, ARROW_MIN_THICKNESS / 2)
+          const { headHalfHeight } = enforceArrowHeadHeights(rawHalfHeight, halfThickness)
+          const nextHeight = headHalfHeight * 2
 
           if (
             Math.abs(nextWidth - shape.width) < 0.5 &&
@@ -2246,10 +2271,14 @@ export default function App() {
         }
 
         const width = Math.max(ARROW_MIN_WIDTH, Math.abs(arrow.width))
-        const height = Math.max(ARROW_MIN_HEIGHT, Math.abs(arrow.height))
+        const rawHeight = Math.max(ARROW_MIN_HEIGHT, Math.abs(arrow.height))
         const thickness = Math.max(ARROW_MIN_THICKNESS, Math.abs(arrow.thickness))
         const color = typeof arrow.color === 'string' ? arrow.color : ARROW_DEFAULT_COLOR
         const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
+        const halfThickness = Math.max(thickness / 2, ARROW_MIN_THICKNESS / 2)
+        const { headHalfHeight } = enforceArrowHeadHeights(rawHeight / 2, halfThickness)
+        const height = headHalfHeight * 2
+        const normalizedThickness = Math.max(ARROW_MIN_THICKNESS, Math.min(thickness, height))
 
         accumulator.push({
           id: arrow.id,
@@ -2258,7 +2287,7 @@ export default function App() {
           y: arrow.y,
           width,
           height,
-          thickness: Math.min(thickness, height),
+          thickness: normalizedThickness,
           angle,
           color,
         })
