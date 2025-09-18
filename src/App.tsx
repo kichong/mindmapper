@@ -4,7 +4,10 @@ import {
   normalizeTextSize,
   type MindMapAnnotation,
   type MindMapEllipse,
+  type MindMapArrow,
   type MindMapNode,
+  type MindMapRectangle,
+  type MindMapLine,
   type MindMapShape,
   type TextSize,
   useMindMap,
@@ -51,6 +54,193 @@ const ELLIPSE_MIN_RADIUS_Y = 45
 const ELLIPSE_DEFAULT_THICKNESS = 14
 const ELLIPSE_HIT_PADDING = 8
 const ELLIPSE_DEFAULT_COLOR = '#a855f7'
+const RECTANGLE_DEFAULT_WIDTH = 320
+const RECTANGLE_DEFAULT_HEIGHT = 200
+const RECTANGLE_MIN_WIDTH = 120
+const RECTANGLE_MIN_HEIGHT = 80
+const RECTANGLE_DEFAULT_THICKNESS = 12
+const RECTANGLE_HIT_PADDING = 6
+const RECTANGLE_DEFAULT_COLOR = '#34d399'
+const ARROW_DEFAULT_WIDTH = 340
+const ARROW_DEFAULT_HEIGHT = 180
+const ARROW_MIN_WIDTH = 36
+const ARROW_MIN_HEIGHT = 6
+const ARROW_DEFAULT_THICKNESS = 48
+const ARROW_MIN_THICKNESS = 2
+const ARROW_HIT_PADDING = 10
+const ARROW_DEFAULT_COLOR = '#f97316'
+const ARROW_HEAD_RATIO = 0.72
+const ARROW_MIN_HEAD_LENGTH = 26
+const ARROW_MIN_SHAFT_HALF_HEIGHT = 1.2
+const ARROW_HEAD_BASE_RATIO = 2.8
+const ARROW_HEAD_BASE_PADDING = 6
+const ARROW_MIN_HEAD_HALF_HEIGHT = 7
+const ARROW_DEFAULT_ANGLE = 0
+const LINE_DEFAULT_LENGTH = 280
+const LINE_DEFAULT_THICKNESS = 8
+const LINE_MIN_LENGTH = 20
+const LINE_MIN_THICKNESS = 1.2
+const LINE_HIT_PADDING = 6
+const LINE_DEFAULT_COLOR = '#22d3ee'
+const LINE_DEFAULT_ANGLE = 0
+
+type Point = { x: number; y: number }
+
+type ArrowGeometry = {
+  halfWidth: number
+  halfHeight: number
+  headLength: number
+  shaftHalfHeight: number
+}
+
+type LineGeometry = {
+  halfLength: number
+  halfThickness: number
+}
+
+const tracePolygon = (context: CanvasRenderingContext2D, points: Point[]) => {
+  if (points.length === 0) {
+    return
+  }
+
+  context.beginPath()
+  context.moveTo(points[0]?.x ?? 0, points[0]?.y ?? 0)
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index]
+    context.lineTo(point.x, point.y)
+  }
+  context.closePath()
+}
+
+const rotatePoint = (point: Point, angle: number): Point => {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return {
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos,
+  }
+}
+
+const rotateAndTranslate = (point: Point, center: Point, angle: number): Point => {
+  const rotated = rotatePoint(point, angle)
+  return {
+    x: rotated.x + center.x,
+    y: rotated.y + center.y,
+  }
+}
+
+const enforceArrowHeadHeights = (rawHalfHeight: number, halfThickness: number) => {
+  // Keep the arrow head leg (the perpendicular edge) bold enough to read
+  const limitedShaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(halfThickness, rawHalfHeight),
+  )
+
+  const headHalfHeight = Math.max(
+    rawHalfHeight,
+    limitedShaftHalfHeight * ARROW_HEAD_BASE_RATIO,
+    limitedShaftHalfHeight + ARROW_HEAD_BASE_PADDING,
+    ARROW_MIN_HEAD_HALF_HEIGHT,
+  )
+
+  const shaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(halfThickness, headHalfHeight),
+  )
+
+  return { headHalfHeight, shaftHalfHeight }
+}
+
+const toLocalCoordinates = (point: Point, center: Point, angle: number): Point => {
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+  const cos = Math.cos(-angle)
+  const sin = Math.sin(-angle)
+  return {
+    x: dx * cos - dy * sin,
+    y: dx * sin + dy * cos,
+  }
+}
+
+const getArrowGeometry = (shape: MindMapArrow): ArrowGeometry => {
+  const halfWidth = Math.max(Math.abs(shape.width) / 2, ARROW_MIN_WIDTH / 2)
+  const rawHalfHeight = Math.max(Math.abs(shape.height) / 2, ARROW_MIN_HEIGHT / 2)
+  const baseHeadLength = Math.max(halfWidth * ARROW_HEAD_RATIO, ARROW_MIN_HEAD_LENGTH)
+  const headLength = Math.min(baseHeadLength, halfWidth)
+  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, ARROW_MIN_THICKNESS / 2)
+  const { headHalfHeight, shaftHalfHeight } = enforceArrowHeadHeights(
+    rawHalfHeight,
+    halfThickness,
+  )
+
+  return {
+    halfWidth,
+    halfHeight: headHalfHeight,
+    headLength,
+    shaftHalfHeight,
+  }
+}
+
+const getLineGeometry = (shape: MindMapLine): LineGeometry => {
+  const halfLength = Math.max(Math.abs(shape.length) / 2, LINE_MIN_LENGTH / 2)
+  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, LINE_MIN_THICKNESS / 2)
+
+  return {
+    halfLength,
+    halfThickness,
+  }
+}
+
+const buildArrowPolygon = (shape: MindMapArrow, extraPadding = 0): Point[] => {
+  const { halfWidth, halfHeight, headLength, shaftHalfHeight } = getArrowGeometry(shape)
+  const paddedHalfWidth = halfWidth + extraPadding
+  const paddedHalfHeight = halfHeight + extraPadding
+  const paddedHeadLength = Math.min(paddedHalfWidth, headLength + extraPadding)
+  const paddedShaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(shaftHalfHeight + extraPadding, paddedHalfHeight),
+  )
+
+  const angle = shape.angle ?? 0
+  const center = { x: shape.x, y: shape.y }
+  const headStartX = paddedHalfWidth - paddedHeadLength
+
+  const localPoints: Point[] = [
+    { x: -paddedHalfWidth, y: -paddedShaftHalfHeight },
+    { x: headStartX, y: -paddedShaftHalfHeight },
+    { x: headStartX, y: -paddedHalfHeight },
+    { x: paddedHalfWidth, y: 0 },
+    { x: headStartX, y: paddedHalfHeight },
+    { x: headStartX, y: paddedShaftHalfHeight },
+    { x: -paddedHalfWidth, y: paddedShaftHalfHeight },
+  ]
+
+  return localPoints.map((point) => rotateAndTranslate(point, center, angle))
+}
+
+const isPointInPolygon = (point: Point, polygon: Point[]): boolean => {
+  let inside = false
+
+  for (let index = 0, previousIndex = polygon.length - 1; index < polygon.length; index += 1) {
+    const vertex = polygon[index]
+    const previous = polygon[previousIndex]
+
+    const intersects =
+      (vertex.y > point.y) !== (previous.y > point.y) &&
+      point.x <
+        ((previous.x - vertex.x) * (point.y - vertex.y)) /
+          ((previous.y - vertex.y) || Number.EPSILON) +
+          vertex.x
+
+    if (intersects) {
+      inside = !inside
+    }
+
+    previousIndex = index
+  }
+
+  return inside
+}
 
 type ViewTransform = {
   scale: number
@@ -357,8 +547,9 @@ export default function App() {
     context.scale(scale, scale)
 
     shapesToDraw.forEach((shape) => {
+      context.save()
+
       if (shape.kind === 'ring') {
-        context.save()
         const radius = Math.max(shape.radius, 0)
         const strokeWidth = Math.max(1, shape.thickness)
         context.lineWidth = strokeWidth
@@ -391,7 +582,6 @@ export default function App() {
       }
 
       if (shape.kind === 'ellipse') {
-        context.save()
         const radiusX = Math.max(shape.radiusX, 0)
         const radiusY = Math.max(shape.radiusY, 0)
         const strokeWidth = Math.max(1, shape.thickness)
@@ -423,7 +613,147 @@ export default function App() {
         }
 
         context.restore()
+        return
       }
+
+      if (shape.kind === 'rectangle') {
+        const width = Math.max(shape.width, 0)
+        const height = Math.max(shape.height, 0)
+        const halfWidth = width / 2
+        const halfHeight = height / 2
+        const strokeWidth = Math.max(1, shape.thickness)
+        const strokeColor = shape.color || RECTANGLE_DEFAULT_COLOR
+
+        context.lineWidth = strokeWidth
+        context.strokeStyle = strokeColor
+        context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
+
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handleX = shape.x + halfWidth
+          const handleY = shape.y + halfHeight
+          context.fillStyle = '#facc15'
+          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+        }
+
+        context.restore()
+        return
+      }
+
+      if (shape.kind === 'arrow') {
+        const polygon = buildArrowPolygon(shape)
+        const fillColor = shape.color || ARROW_DEFAULT_COLOR
+
+        context.lineJoin = 'round'
+        context.lineCap = 'round'
+        tracePolygon(context, polygon)
+        context.fillStyle = fillColor
+        context.fill()
+
+        const outlineWidth = Math.max(1.2, Math.min(shape.thickness / 10, 2.6))
+        context.lineWidth = outlineWidth
+        context.strokeStyle = fillColor
+        context.stroke()
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.max(Math.max(2 / scale, 1.5), outlineWidth)
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.stroke()
+
+          const geometry = getArrowGeometry(shape)
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handlePoint = rotateAndTranslate(
+            { x: geometry.halfWidth, y: geometry.halfHeight },
+            { x: shape.x, y: shape.y },
+            shape.angle ?? 0,
+          )
+          context.fillStyle = '#facc15'
+          context.fillRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+        }
+
+        context.restore()
+        return
+      }
+
+      if (shape.kind === 'line') {
+        const geometry = getLineGeometry(shape)
+        const angle = shape.angle ?? 0
+        const center = { x: shape.x, y: shape.y }
+        const color = shape.color || LINE_DEFAULT_COLOR
+        const start = rotateAndTranslate({ x: -geometry.halfLength, y: 0 }, center, angle)
+        const end = rotateAndTranslate({ x: geometry.halfLength, y: 0 }, center, angle)
+        const strokeWidth = Math.max(geometry.halfThickness * 2, LINE_MIN_THICKNESS)
+
+        context.lineCap = 'round'
+        context.strokeStyle = color
+        context.lineWidth = strokeWidth
+        context.beginPath()
+        context.moveTo(start.x, start.y)
+        context.lineTo(end.x, end.y)
+        context.stroke()
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.max(Math.max(2 / scale, 1.5), strokeWidth)
+          context.beginPath()
+          context.moveTo(start.x, start.y)
+          context.lineTo(end.x, end.y)
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.stroke()
+
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handlePoint = rotateAndTranslate(
+            { x: geometry.halfLength, y: 0 },
+            center,
+            angle,
+          )
+          context.fillStyle = '#facc15'
+          context.fillRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+        }
+
+        context.restore()
+        return
+      }
+
+      context.restore()
     })
 
     context.lineWidth = 2
@@ -737,6 +1067,52 @@ export default function App() {
             )
           }
 
+          if (shape.kind === 'rectangle') {
+            const halfWidth = Math.max(shape.width, 0) / 2
+            const halfHeight = Math.max(shape.height, 0) / 2
+            const handleX = shape.x + halfWidth
+            const handleY = shape.y + halfHeight
+
+            return (
+              scenePoint.x >= handleX - handleHalfSize &&
+              scenePoint.x <= handleX + handleHalfSize &&
+              scenePoint.y >= handleY - handleHalfSize &&
+              scenePoint.y <= handleY + handleHalfSize
+            )
+          }
+
+          if (shape.kind === 'arrow') {
+            const geometry = getArrowGeometry(shape)
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
+
+            return (
+              localPoint.x >= geometry.halfWidth - handleHalfSize &&
+              localPoint.x <= geometry.halfWidth + handleHalfSize &&
+              localPoint.y >= geometry.halfHeight - handleHalfSize &&
+              localPoint.y <= geometry.halfHeight + handleHalfSize
+            )
+          }
+
+          if (shape.kind === 'line') {
+            const geometry = getLineGeometry(shape)
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
+
+            return (
+              localPoint.x >= geometry.halfLength - handleHalfSize &&
+              localPoint.x <= geometry.halfLength + handleHalfSize &&
+              localPoint.y >= -handleHalfSize &&
+              localPoint.y <= handleHalfSize
+            )
+          }
+
           return false
         })
 
@@ -821,10 +1197,11 @@ export default function App() {
           if (shape.kind === 'ring') {
             const radius = Math.max(shape.radius, 0)
             const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
-            const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
-            const outerRadius = radius + halfThickness
+            const hitBand = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
+            const outerRadius = radius + hitBand
+            const innerRadius = Math.max(0, radius - hitBand)
 
-            return distance <= outerRadius
+            return distance <= outerRadius && distance >= innerRadius
           }
 
           if (shape.kind === 'ellipse') {
@@ -832,13 +1209,87 @@ export default function App() {
             const radiusY = Math.max(shape.radiusY, 1)
             const dx = scenePoint.x - shape.x
             const dy = scenePoint.y - shape.y
-            const outerRadiusX = radiusX + ELLIPSE_HIT_PADDING
-            const outerRadiusY = radiusY + ELLIPSE_HIT_PADDING
+            const hitBand = Math.max(1, shape.thickness / 2 + ELLIPSE_HIT_PADDING)
+            const outerRadiusX = radiusX + hitBand
+            const outerRadiusY = radiusY + hitBand
 
-            const normalized =
+            const outerNormalized =
               (dx * dx) / (outerRadiusX * outerRadiusX) + (dy * dy) / (outerRadiusY * outerRadiusY)
 
-            return Number.isFinite(normalized) && normalized <= 1
+            if (!Number.isFinite(outerNormalized) || outerNormalized > 1) {
+              return false
+            }
+
+            const innerRadiusX = radiusX - hitBand
+            const innerRadiusY = radiusY - hitBand
+
+            if (innerRadiusX <= 0 || innerRadiusY <= 0) {
+              return true
+            }
+
+            const innerNormalized =
+              (dx * dx) / (innerRadiusX * innerRadiusX) + (dy * dy) / (innerRadiusY * innerRadiusY)
+
+            return !Number.isFinite(innerNormalized) || innerNormalized >= 1
+          }
+
+          if (shape.kind === 'rectangle') {
+            const halfWidth = Math.max(shape.width, 1) / 2
+            const halfHeight = Math.max(shape.height, 1) / 2
+            const hitBand = Math.max(1, shape.thickness / 2 + RECTANGLE_HIT_PADDING)
+            const outerHalfWidth = halfWidth + hitBand
+            const outerHalfHeight = halfHeight + hitBand
+
+            const withinOuter =
+              scenePoint.x >= shape.x - outerHalfWidth &&
+              scenePoint.x <= shape.x + outerHalfWidth &&
+              scenePoint.y >= shape.y - outerHalfHeight &&
+              scenePoint.y <= shape.y + outerHalfHeight
+
+            if (!withinOuter) {
+              return false
+            }
+
+            const innerHalfWidth = halfWidth - hitBand
+            const innerHalfHeight = halfHeight - hitBand
+
+            if (innerHalfWidth <= 0 || innerHalfHeight <= 0) {
+              return true
+            }
+
+            const withinInner =
+              scenePoint.x > shape.x - innerHalfWidth &&
+              scenePoint.x < shape.x + innerHalfWidth &&
+              scenePoint.y > shape.y - innerHalfHeight &&
+              scenePoint.y < shape.y + innerHalfHeight
+
+            return !withinInner
+          }
+
+          if (shape.kind === 'arrow') {
+            const polygon = buildArrowPolygon(shape, ARROW_HIT_PADDING)
+            return isPointInPolygon(scenePoint, polygon)
+          }
+
+          if (shape.kind === 'line') {
+            const geometry = getLineGeometry(shape)
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
+            const padding = LINE_HIT_PADDING
+            const halfLength = geometry.halfLength
+            const halfThickness = geometry.halfThickness
+
+            const withinLength =
+              localPoint.x >= -halfLength - padding && localPoint.x <= halfLength + padding
+
+            if (!withinLength) {
+              return false
+            }
+
+            return Math.abs(localPoint.y) <= halfThickness + padding
           }
 
           return false
@@ -976,7 +1427,119 @@ export default function App() {
             shapeId: shape.id,
             updates: { radiusX: nextRadiusX, radiusY: nextRadiusY },
           })
+          return
         }
+
+        if (shape.kind === 'rectangle') {
+          const deltaX = Math.abs(scenePoint.x - shape.x)
+          const deltaY = Math.abs(scenePoint.y - shape.y)
+          const minHalfWidth = Math.max(RECTANGLE_MIN_WIDTH / 2, shape.thickness / 2 + 6)
+          const minHalfHeight = Math.max(RECTANGLE_MIN_HEIGHT / 2, shape.thickness / 2 + 6)
+          const nextHalfWidth = Math.max(minHalfWidth, deltaX)
+          const nextHalfHeight = Math.max(minHalfHeight, deltaY)
+          const nextWidth = nextHalfWidth * 2
+          const nextHeight = nextHalfHeight * 2
+
+          if (
+            Math.abs(nextWidth - shape.width) < 0.5 &&
+            Math.abs(nextHeight - shape.height) < 0.5
+          ) {
+            return
+          }
+
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: { width: nextWidth, height: nextHeight },
+          })
+          return
+        }
+
+        if (shape.kind === 'arrow') {
+          const dx = scenePoint.x - shape.x
+          const dy = scenePoint.y - shape.y
+          const distance = Math.hypot(dx, dy)
+          if (distance < 0.5) {
+            return
+          }
+
+          const nextAngle = Math.atan2(dy, dx)
+          const localPoint = toLocalCoordinates(
+            scenePoint,
+            { x: shape.x, y: shape.y },
+            nextAngle,
+          )
+          const minHalfWidth = ARROW_MIN_WIDTH / 2
+          const minHalfHeight = ARROW_MIN_HEIGHT / 2
+          const nextHalfWidth = Math.max(minHalfWidth, Math.abs(localPoint.x))
+          const rawHalfHeight = Math.max(minHalfHeight, Math.abs(localPoint.y))
+          const nextWidth = nextHalfWidth * 2
+          const thicknessLimit = Math.min(shape.thickness, rawHalfHeight * 2)
+          const nextThickness = Math.max(ARROW_MIN_THICKNESS, thicknessLimit)
+          const halfThickness = Math.max(nextThickness / 2, ARROW_MIN_THICKNESS / 2)
+          const { headHalfHeight } = enforceArrowHeadHeights(rawHalfHeight, halfThickness)
+          const nextHeight = headHalfHeight * 2
+
+          if (
+            Math.abs(nextWidth - shape.width) < 0.5 &&
+            Math.abs(nextHeight - shape.height) < 0.5 &&
+            Math.abs(nextThickness - shape.thickness) < 0.5 &&
+            Math.abs(nextAngle - (shape.angle ?? 0)) < 0.01
+          ) {
+            return
+          }
+
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: {
+              width: nextWidth,
+              height: nextHeight,
+              thickness: nextThickness,
+              angle: nextAngle,
+            },
+          })
+          return
+        }
+
+        if (shape.kind === 'line') {
+          const dx = scenePoint.x - shape.x
+          const dy = scenePoint.y - shape.y
+          const distance = Math.hypot(dx, dy)
+          if (distance < 0.25) {
+            return
+          }
+
+          const nextAngle = Math.atan2(dy, dx)
+          const localPoint = toLocalCoordinates(
+            scenePoint,
+            { x: shape.x, y: shape.y },
+            nextAngle,
+          )
+          const nextHalfLength = Math.max(LINE_MIN_LENGTH / 2, Math.abs(localPoint.x))
+          const nextLength = nextHalfLength * 2
+          const nextThickness = Math.max(LINE_MIN_THICKNESS, Math.abs(localPoint.y) * 2)
+
+          if (
+            Math.abs(nextLength - shape.length) < 0.5 &&
+            Math.abs(nextThickness - shape.thickness) < 0.5 &&
+            Math.abs(nextAngle - (shape.angle ?? 0)) < 0.01
+          ) {
+            return
+          }
+
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: {
+              length: nextLength,
+              thickness: nextThickness,
+              angle: nextAngle,
+            },
+          })
+          return
+        }
+
         return
       }
 
@@ -1210,6 +1773,88 @@ export default function App() {
         radiusY: ELLIPSE_DEFAULT_RADIUS_Y,
         thickness: ELLIPSE_DEFAULT_THICKNESS,
         color: ELLIPSE_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
+  const handleAddRectangle = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'rectangle',
+        x: worldCenterX,
+        y: worldCenterY,
+        width: RECTANGLE_DEFAULT_WIDTH,
+        height: RECTANGLE_DEFAULT_HEIGHT,
+        thickness: RECTANGLE_DEFAULT_THICKNESS,
+        color: RECTANGLE_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
+  const handleAddArrow = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'arrow',
+        x: worldCenterX,
+        y: worldCenterY,
+        width: ARROW_DEFAULT_WIDTH,
+        height: ARROW_DEFAULT_HEIGHT,
+        thickness: ARROW_DEFAULT_THICKNESS,
+        angle: ARROW_DEFAULT_ANGLE,
+        color: ARROW_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
+  const handleAddLine = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'line',
+        x: worldCenterX,
+        y: worldCenterY,
+        length: LINE_DEFAULT_LENGTH,
+        thickness: LINE_DEFAULT_THICKNESS,
+        angle: LINE_DEFAULT_ANGLE,
+        color: LINE_DEFAULT_COLOR,
       },
     })
   }, [dispatch])
@@ -1577,6 +2222,109 @@ export default function App() {
         })
       }
 
+      if (shape.kind === 'rectangle') {
+        const rectangle = shape as Partial<MindMapRectangle>
+
+        if (
+          typeof rectangle.id !== 'string' ||
+          typeof rectangle.x !== 'number' ||
+          typeof rectangle.y !== 'number' ||
+          typeof rectangle.width !== 'number' ||
+          typeof rectangle.height !== 'number' ||
+          typeof rectangle.thickness !== 'number'
+        ) {
+          return accumulator
+        }
+
+        const width = Math.max(RECTANGLE_MIN_WIDTH, Math.abs(rectangle.width))
+        const height = Math.max(RECTANGLE_MIN_HEIGHT, Math.abs(rectangle.height))
+        const thickness = Math.max(1, Math.abs(rectangle.thickness))
+        const color =
+          typeof rectangle.color === 'string' ? rectangle.color : RECTANGLE_DEFAULT_COLOR
+        const maxThickness = Math.min(width, height) / 2
+
+        accumulator.push({
+          id: rectangle.id,
+          kind: 'rectangle',
+          x: rectangle.x,
+          y: rectangle.y,
+          width,
+          height,
+          thickness: Math.min(thickness, maxThickness),
+          color,
+        })
+        return accumulator
+      }
+
+      if (shape.kind === 'arrow') {
+        const arrow = shape as Partial<MindMapArrow>
+
+        if (
+          typeof arrow.id !== 'string' ||
+          typeof arrow.x !== 'number' ||
+          typeof arrow.y !== 'number' ||
+          typeof arrow.width !== 'number' ||
+          typeof arrow.height !== 'number' ||
+          typeof arrow.thickness !== 'number'
+        ) {
+          return accumulator
+        }
+
+        const width = Math.max(ARROW_MIN_WIDTH, Math.abs(arrow.width))
+        const rawHeight = Math.max(ARROW_MIN_HEIGHT, Math.abs(arrow.height))
+        const thickness = Math.max(ARROW_MIN_THICKNESS, Math.abs(arrow.thickness))
+        const color = typeof arrow.color === 'string' ? arrow.color : ARROW_DEFAULT_COLOR
+        const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
+        const halfThickness = Math.max(thickness / 2, ARROW_MIN_THICKNESS / 2)
+        const { headHalfHeight } = enforceArrowHeadHeights(rawHeight / 2, halfThickness)
+        const height = headHalfHeight * 2
+        const normalizedThickness = Math.max(ARROW_MIN_THICKNESS, Math.min(thickness, height))
+
+        accumulator.push({
+          id: arrow.id,
+          kind: 'arrow',
+          x: arrow.x,
+          y: arrow.y,
+          width,
+          height,
+          thickness: normalizedThickness,
+          angle,
+          color,
+        })
+        return accumulator
+      }
+
+      if (shape.kind === 'line') {
+        const line = shape as Partial<MindMapLine>
+
+        if (
+          typeof line.id !== 'string' ||
+          typeof line.x !== 'number' ||
+          typeof line.y !== 'number' ||
+          typeof line.length !== 'number' ||
+          typeof line.thickness !== 'number'
+        ) {
+          return accumulator
+        }
+
+        const length = Math.max(LINE_MIN_LENGTH, Math.abs(line.length))
+        const thickness = Math.max(LINE_MIN_THICKNESS, Math.abs(line.thickness))
+        const color = typeof line.color === 'string' ? line.color : LINE_DEFAULT_COLOR
+        const angle = typeof line.angle === 'number' && Number.isFinite(line.angle) ? line.angle : 0
+
+        accumulator.push({
+          id: line.id,
+          kind: 'line',
+          x: line.x,
+          y: line.y,
+          length,
+          thickness,
+          color,
+          angle,
+        })
+        return accumulator
+      }
+
       return accumulator
     }, [])
   }, [])
@@ -1734,15 +2482,82 @@ export default function App() {
             <button type="button" onClick={handleAddAnnotation} title="Add a floating text box">
               Textbox
             </button>
-            <button type="button" onClick={handleAddRing} title="Add a ring to group related ideas">
-              Ring
+            <button
+              type="button"
+              onClick={handleAddRing}
+              title="Add a ring to group related ideas"
+              aria-label="Add ring"
+              className="mindmap-toolbar__icon-button"
+            >
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
+              </svg>
+              <span className="visually-hidden">Ring</span>
             </button>
             <button
               type="button"
               onClick={handleAddEllipse}
               title="Add an ellipse to spotlight a region"
+              aria-label="Add ellipse"
+              className="mindmap-toolbar__icon-button"
             >
-              Ellipse
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
+              </svg>
+              <span className="visually-hidden">Ellipse</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddRectangle}
+              title="Add a rectangle to frame ideas"
+              aria-label="Add rectangle"
+              className="mindmap-toolbar__icon-button"
+            >
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <rect
+                  x="5"
+                  y="6"
+                  width="14"
+                  height="12"
+                  rx="2"
+                  stroke="#34d399"
+                  strokeWidth="3"
+                  fill="none"
+                />
+              </svg>
+              <span className="visually-hidden">Rectangle</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddArrow}
+              title="Add an arrow to highlight a flow"
+              aria-label="Add arrow"
+              className="mindmap-toolbar__icon-button"
+            >
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
+              </svg>
+              <span className="visually-hidden">Arrow</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddLine}
+              title="Add a straight line connector"
+              aria-label="Add line"
+              className="mindmap-toolbar__icon-button"
+            >
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <line
+                  x1="5"
+                  y1="18"
+                  x2="19"
+                  y2="6"
+                  stroke="#22d3ee"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="visually-hidden">Line</span>
             </button>
           </div>
         </div>
