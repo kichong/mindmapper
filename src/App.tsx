@@ -178,6 +178,7 @@ export default function App() {
   const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const textInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingTextFocusRef = useRef(false)
   const {
     state: { nodes, annotations, shapes, selectedNodeId, selectedAnnotationId, selectedShapeId, history },
     dispatch,
@@ -306,6 +307,13 @@ export default function App() {
   useEffect(() => {
     setTextDraft(selectedTextTarget?.text ?? '')
   }, [selectedTextTarget])
+
+  useEffect(() => {
+    if (!isToolbarCollapsed && pendingTextFocusRef.current) {
+      pendingTextFocusRef.current = false
+      focusInput(textInputRef.current)
+    }
+  }, [focusInput, isToolbarCollapsed, selectedTextTarget])
 
   const closeExportMenu = useCallback(() => {
     setExportMenuOpen(false)
@@ -1004,9 +1012,34 @@ export default function App() {
       adjustZoom(zoomFactor, { screenX: x, screenY: y })
     }
 
+    const requestToolbarForEditing = () => {
+      if (isToolbarCollapsed) {
+        pendingTextFocusRef.current = true
+        setToolbarCollapsed(false)
+        return
+      }
+
+      pendingTextFocusRef.current = false
+      focusInput(textInputRef.current)
+    }
+
     const handleDoubleClick = (event: MouseEvent) => {
       const { x, y } = getCanvasPoint(event)
       const scenePoint = getScenePointFromCanvas(x, y)
+
+      const hitNode = [...nodesRef.current]
+        .reverse()
+        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
+
+      if (hitNode) {
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        setTextDraft(hitNode.text)
+        requestToolbarForEditing()
+        event.preventDefault()
+        return
+      }
 
       const hitAnnotation = [...annotationsRef.current]
         .reverse()
@@ -1032,21 +1065,7 @@ export default function App() {
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setTextDraft(hitAnnotation.text)
-        focusInput(textInputRef.current)
-        event.preventDefault()
-        return
-      }
-
-      const hitNode = [...nodesRef.current]
-        .reverse()
-        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
-
-      if (hitNode) {
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
-        setTextDraft(hitNode.text)
-        focusInput(textInputRef.current)
+        requestToolbarForEditing()
         event.preventDefault()
       }
     }
@@ -1068,7 +1087,16 @@ export default function App() {
       canvas.removeEventListener('wheel', handleWheel)
       canvas.removeEventListener('dblclick', handleDoubleClick)
     }
-  }, [adjustZoom, dispatch, focusInput, getNodeRadius, measureAnnotation, resizeCanvas])
+  }, [
+    adjustZoom,
+    dispatch,
+    focusInput,
+    getNodeRadius,
+    isToolbarCollapsed,
+    measureAnnotation,
+    resizeCanvas,
+    setToolbarCollapsed,
+  ])
 
   const handleAddChild = useCallback(() => {
     if (nodes.length === 0) {
