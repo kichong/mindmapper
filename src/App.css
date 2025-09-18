@@ -49,6 +49,22 @@
   line-height: 1;
 }
 
+.mindmap-toolbar button.mindmap-toolbar__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  width: 2.6rem;
+  height: 2.6rem;
+  min-width: 2.6rem;
+}
+
+.mindmap-toolbar__icon {
+  display: block;
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
 .mindmap-toolbar button:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(250, 204, 21, 0.35);
@@ -135,6 +151,18 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #e2e8f0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .mindmap-toolbar__io-button {
