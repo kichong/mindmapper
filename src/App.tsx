@@ -329,16 +329,12 @@ export default function App() {
         const radiusX = Math.max(shape.radiusX, 0)
         const radiusY = Math.max(shape.radiusY, 0)
         const strokeWidth = Math.max(1, shape.thickness)
-        const fillColor = shape.color || ELLIPSE_DEFAULT_COLOR
+        const strokeColor = shape.color || ELLIPSE_DEFAULT_COLOR
 
         context.beginPath()
         context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
-        context.fillStyle = fillColor
-        context.globalAlpha = 0.15
-        context.fill()
-        context.globalAlpha = 1
         context.lineWidth = strokeWidth
-        context.strokeStyle = fillColor
+        context.strokeStyle = strokeColor
         context.stroke()
 
         if (shape.id === selectedShapeId) {
@@ -688,48 +684,22 @@ export default function App() {
         return
       }
 
-      const hitShape = [...shapesRef.current]
+      const hitNode = [...nodesRef.current]
         .reverse()
-        .find((shape) => {
-          if (shape.kind === 'ring') {
-            const radius = Math.max(shape.radius, 0)
-            const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
-            const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
-            const innerRadius = Math.max(0, radius - halfThickness)
-            const outerRadius = radius + halfThickness
+        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
 
-            return distance >= innerRadius && distance <= outerRadius
-          }
-
-          if (shape.kind === 'ellipse') {
-            const radiusX = Math.max(shape.radiusX, 1)
-            const radiusY = Math.max(shape.radiusY, 1)
-            const dx = scenePoint.x - shape.x
-            const dy = scenePoint.y - shape.y
-            const outerRadiusX = radiusX + ELLIPSE_HIT_PADDING
-            const outerRadiusY = radiusY + ELLIPSE_HIT_PADDING
-
-            const normalized =
-              (dx * dx) / (outerRadiusX * outerRadiusX) + (dy * dy) / (outerRadiusY * outerRadiusY)
-
-            return Number.isFinite(normalized) && normalized <= 1
-          }
-
-          return false
-        })
-
-      if (hitShape) {
+      if (hitNode) {
         interactionRef.current = {
-          mode: 'shape-move',
+          mode: 'node',
           pointerId: event.pointerId,
-          shapeId: hitShape.id,
-          offsetX: scenePoint.x - hitShape.x,
-          offsetY: scenePoint.y - hitShape.y,
+          nodeId: hitNode.id,
+          offsetX: scenePoint.x - hitNode.x,
+          offsetY: scenePoint.y - hitNode.y,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -773,22 +743,47 @@ export default function App() {
         return
       }
 
-      const hitNode = [...nodesRef.current]
+      const hitShape = [...shapesRef.current]
         .reverse()
-        .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
+        .find((shape) => {
+          if (shape.kind === 'ring') {
+            const radius = Math.max(shape.radius, 0)
+            const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+            const halfThickness = Math.max(1, shape.thickness / 2 + RING_HIT_PADDING)
+            const outerRadius = radius + halfThickness
 
-      if (hitNode) {
+            return distance <= outerRadius
+          }
+
+          if (shape.kind === 'ellipse') {
+            const radiusX = Math.max(shape.radiusX, 1)
+            const radiusY = Math.max(shape.radiusY, 1)
+            const dx = scenePoint.x - shape.x
+            const dy = scenePoint.y - shape.y
+            const outerRadiusX = radiusX + ELLIPSE_HIT_PADDING
+            const outerRadiusY = radiusY + ELLIPSE_HIT_PADDING
+
+            const normalized =
+              (dx * dx) / (outerRadiusX * outerRadiusX) + (dy * dy) / (outerRadiusY * outerRadiusY)
+
+            return Number.isFinite(normalized) && normalized <= 1
+          }
+
+          return false
+        })
+
+      if (hitShape) {
         interactionRef.current = {
-          mode: 'node',
+          mode: 'shape-move',
           pointerId: event.pointerId,
-          nodeId: hitNode.id,
-          offsetX: scenePoint.x - hitNode.x,
-          offsetY: scenePoint.y - hitNode.y,
+          shapeId: hitShape.id,
+          offsetX: scenePoint.x - hitShape.x,
+          offsetY: scenePoint.y - hitShape.y,
         }
 
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
