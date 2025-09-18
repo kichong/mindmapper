@@ -14,9 +14,9 @@ import './App.css'
 const NODE_BASE_RADIUS = 40
 const NODE_TEXT_PADDING = 18
 const NODE_FONT_SIZES: Record<TextSize, number> = {
-  small: 14,
-  medium: 16,
-  large: 20,
+  small: 13,
+  medium: 18,
+  large: 24,
 }
 const LINK_DISTANCE = 160
 const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
@@ -26,14 +26,14 @@ const ZOOM_STEP = 1.2
 const KEYBOARD_PAN_STEP = 80
 const AUTO_CENTER_PADDING = 160
 const ANNOTATION_FONT_SIZES: Record<TextSize, number> = {
-  small: 16,
-  medium: 18,
-  large: 22,
+  small: 15,
+  medium: 21,
+  large: 28,
 }
 const ANNOTATION_LINE_HEIGHTS: Record<TextSize, number> = {
-  small: 22,
-  medium: 26,
-  large: 30,
+  small: 24,
+  medium: 30,
+  large: 38,
 }
 const ANNOTATION_PADDING_X = 14
 const ANNOTATION_PADDING_Y = 10
@@ -229,6 +229,7 @@ export default function App() {
   const hasAutoCenteredRef = useRef(false)
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
+  const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
 
   const getNodeRadius = useCallback(
     (node: MindMapNode) => {
@@ -302,6 +303,10 @@ export default function App() {
 
   const toggleExportMenu = useCallback(() => {
     setExportMenuOpen((previous) => !previous)
+  }, [])
+
+  const toggleToolbarCollapsed = useCallback(() => {
+    setToolbarCollapsed((previous) => !previous)
   }, [])
 
   const drawScene = useCallback(() => {
@@ -1658,21 +1663,32 @@ export default function App() {
     [dispatch, selectedAnnotationId],
   )
 
+  const toolbarBodyId = 'mindmap-toolbar-body'
+  const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
+
   return (
     <div className="app-shell">
       <canvas ref={canvasRef} className="mindmap-canvas" />
-      <div className="mindmap-toolbar">
-        <div className="mindmap-toolbar__actions">
-          <button type="button" onClick={handleAddChild} title="Enter">
-            Add child
+      <div className={toolbarClassName}>
+        <div className="mindmap-toolbar__header">
+          <button
+            type="button"
+            onClick={toggleToolbarCollapsed}
+            className="mindmap-toolbar__toggle"
+            aria-expanded={!isToolbarCollapsed}
+            aria-controls={toolbarBodyId}
+            aria-label="Toggle toolbar visibility"
+            title={isToolbarCollapsed ? 'Show toolbar controls' : 'Hide toolbar controls'}
+          >
+            {isToolbarCollapsed ? 'Show tools ▼' : 'Hide tools ▲'}
           </button>
-          <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
-            Add text
-          </button>
-        </div>
-        <div className="mindmap-toolbar__section" aria-label="Shape tools">
-          <span className="mindmap-toolbar__section-title">Shapes</span>
-          <div className="mindmap-toolbar__shape-actions">
+          <div className="mindmap-toolbar__header-actions">
+            <button type="button" onClick={handleAddChild} title="Enter">
+              Add child
+            </button>
+            <button type="button" onClick={handleAddAnnotation} title="Add a floating text note">
+              Add text
+            </button>
             <button type="button" onClick={handleAddRing} title="Add a ring to group related ideas">
               Add ring
             </button>
@@ -1684,80 +1700,87 @@ export default function App() {
               Add ellipse
             </button>
           </div>
-          <p className="mindmap-toolbar__shape-hint" aria-live="polite">
-            {selectedRing
-              ? `Ring radius: ${Math.round(selectedRing.radius)} px. Drag the golden square on the ring to resize it.`
-              : selectedEllipse
-              ? `Ellipse size: ${Math.round(selectedEllipse.radiusX * 2)} × ${Math.round(selectedEllipse.radiusY * 2)} px. Drag the golden square on the lower right to stretch it.`
-              : 'Add a ring or ellipse to highlight related thoughts. Select the shape and drag the golden square handle to resize it.'}
-          </p>
         </div>
-        <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
-          <div className="mindmap-toolbar__text-editor">
-            <label className="mindmap-toolbar__text-control">
-              <span className="mindmap-toolbar__text-label">Edit node</span>
-              <input
-                type="text"
-                value={editText}
-                onChange={handleNodeTextChange}
-                placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
-                disabled={!selectedNode}
-                aria-label="Selected node text"
-                className="mindmap-toolbar__text-input"
-                ref={nodeInputRef}
-              />
-            </label>
-            <label className="mindmap-toolbar__text-control">
-              <span className="mindmap-toolbar__text-label">Text size</span>
-              <select
-                value={selectedNodeTextSize}
-                onChange={handleNodeTextSizeChange}
-                disabled={!selectedNode}
-                aria-label="Selected node text size"
-                className="mindmap-toolbar__text-select"
-              >
-                {TEXT_SIZE_CHOICES.map((size) => (
-                  <option key={size} value={size}>
-                    {TEXT_SIZE_LABELS[size]}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {!isToolbarCollapsed ? (
+          <div className="mindmap-toolbar__body" id={toolbarBodyId}>
+            <div className="mindmap-toolbar__shape-panel">
+              <span className="mindmap-toolbar__section-title">Shapes</span>
+              <p className="mindmap-toolbar__shape-hint" aria-live="polite">
+                {selectedRing
+                  ? `Ring radius: ${Math.round(selectedRing.radius)} px. Drag the golden square on the ring to resize it.`
+                  : selectedEllipse
+                  ? `Ellipse size: ${Math.round(selectedEllipse.radiusX * 2)} × ${Math.round(selectedEllipse.radiusY * 2)} px. Drag the golden square on the lower right to stretch it.`
+                  : 'Add a ring or ellipse to highlight related thoughts. Select the shape and drag the golden square handle to resize it.'}
+              </p>
+            </div>
+            <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
+              <div className="mindmap-toolbar__text-editor">
+                <label className="mindmap-toolbar__text-control">
+                  <span className="mindmap-toolbar__text-label">Edit node</span>
+                  <input
+                    type="text"
+                    value={editText}
+                    onChange={handleNodeTextChange}
+                    placeholder={selectedNode ? 'Type here to rename the node' : 'Select a node first'}
+                    disabled={!selectedNode}
+                    aria-label="Selected node text"
+                    className="mindmap-toolbar__text-input"
+                    ref={nodeInputRef}
+                  />
+                </label>
+                <label className="mindmap-toolbar__text-control">
+                  <span className="mindmap-toolbar__text-label">Text size</span>
+                  <select
+                    value={selectedNodeTextSize}
+                    onChange={handleNodeTextSizeChange}
+                    disabled={!selectedNode}
+                    aria-label="Selected node text size"
+                    className="mindmap-toolbar__text-select"
+                  >
+                    {TEXT_SIZE_CHOICES.map((size) => (
+                      <option key={size} value={size}>
+                        {TEXT_SIZE_LABELS[size]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="mindmap-toolbar__text-editor">
+                <label className="mindmap-toolbar__text-control">
+                  <span className="mindmap-toolbar__text-label">Edit text</span>
+                  <input
+                    type="text"
+                    value={annotationEditText}
+                    onChange={handleAnnotationTextChange}
+                    placeholder={
+                      selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
+                    }
+                    disabled={!selectedAnnotation}
+                    aria-label="Selected text box content"
+                    className="mindmap-toolbar__text-input"
+                    ref={annotationInputRef}
+                  />
+                </label>
+                <label className="mindmap-toolbar__text-control">
+                  <span className="mindmap-toolbar__text-label">Text size</span>
+                  <select
+                    value={selectedAnnotationTextSize}
+                    onChange={handleAnnotationTextSizeChange}
+                    disabled={!selectedAnnotation}
+                    aria-label="Selected text box size"
+                    className="mindmap-toolbar__text-select"
+                  >
+                    {TEXT_SIZE_CHOICES.map((size) => (
+                      <option key={size} value={size}>
+                        {TEXT_SIZE_LABELS[size]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
           </div>
-          <div className="mindmap-toolbar__text-editor">
-            <label className="mindmap-toolbar__text-control">
-              <span className="mindmap-toolbar__text-label">Edit text</span>
-              <input
-                type="text"
-                value={annotationEditText}
-                onChange={handleAnnotationTextChange}
-                placeholder={
-                  selectedAnnotation ? 'Type here to update the text box' : 'Select a text box first'
-                }
-                disabled={!selectedAnnotation}
-                aria-label="Selected text box content"
-                className="mindmap-toolbar__text-input"
-                ref={annotationInputRef}
-              />
-            </label>
-            <label className="mindmap-toolbar__text-control">
-              <span className="mindmap-toolbar__text-label">Text size</span>
-              <select
-                value={selectedAnnotationTextSize}
-                onChange={handleAnnotationTextSizeChange}
-                disabled={!selectedAnnotation}
-                aria-label="Selected text box size"
-                className="mindmap-toolbar__text-select"
-              >
-                {TEXT_SIZE_CHOICES.map((size) => (
-                  <option key={size} value={size}>
-                    {TEXT_SIZE_LABELS[size]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
+        ) : null}
       </div>
       <div className="mindmap-io-panel">
         <button

@@ -10,3 +10,4 @@
 ## Features in progress
 - Shape tools now include rings and ellipses that use a golden resize handle. Follow the same interaction pattern when you introduce more shapes.
 - Nodes and floating text boxes now store a `textSize` of `small`, `medium`, or `large`. Use the shared `normalizeTextSize` helper when adding new entry points that create or import these records.
+- The top toolbar is now collapsible; keep creation buttons available when collapsed and tuck detailed controls inside the expanded panel.
