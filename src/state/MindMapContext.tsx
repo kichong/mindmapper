@@ -8,6 +8,16 @@ import {
   type Dispatch,
 } from 'react'
 
+export type TextSize = 'small' | 'medium' | 'large'
+
+export const TEXT_SIZE_CHOICES: readonly TextSize[] = ['small', 'medium', 'large']
+
+export function normalizeTextSize(value: unknown): TextSize {
+  return value === 'small' || value === 'medium' || value === 'large'
+    ? (value as TextSize)
+    : 'medium'
+}
+
 
 export interface MindMapNode {
   id: string
@@ -16,6 +26,7 @@ export interface MindMapNode {
   x: number
   y: number
   color: string
+  textSize: TextSize
 }
 
 export interface MindMapAnnotation {
@@ -23,11 +34,40 @@ export interface MindMapAnnotation {
   text: string
   x: number
   y: number
+  textSize: TextSize
 }
+
+export interface MindMapRing {
+  id: string
+  kind: 'ring'
+  x: number
+  y: number
+  radius: number
+  thickness: number
+  color: string
+}
+
+export interface MindMapEllipse {
+  id: string
+  kind: 'ellipse'
+  x: number
+  y: number
+  radiusX: number
+  radiusY: number
+  thickness: number
+  color: string
+}
+
+export type MindMapShape = MindMapRing | MindMapEllipse
+
+type MindMapShapeUpdate =
+  | Partial<Omit<MindMapRing, 'id' | 'kind'>>
+  | Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
 
 interface MindMapSnapshot {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
+  shapes: MindMapShape[]
 }
 
 interface MindMapHistory {
@@ -38,8 +78,10 @@ interface MindMapHistory {
 export interface MindMapState {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
+  shapes: MindMapShape[]
   selectedNodeId: string | null
   selectedAnnotationId: string | null
+  selectedShapeId: string | null
   history: MindMapHistory
 }
 
@@ -53,12 +95,22 @@ type MindMapAction =
   | { type: 'UPDATE_ANNOTATION'; annotationId: string; updates: Partial<Omit<MindMapAnnotation, 'id'>> }
   | { type: 'MOVE_ANNOTATION'; annotationId: string; x: number; y: number }
   | { type: 'DELETE_ANNOTATION'; annotationId: string }
+  | { type: 'ADD_SHAPE'; shape: MindMapShape }
+  | { type: 'UPDATE_SHAPE'; shapeId: string; updates: MindMapShapeUpdate }
+  | { type: 'MOVE_SHAPE'; shapeId: string; x: number; y: number }
+  | { type: 'DELETE_SHAPE'; shapeId: string }
   | { type: 'UNDO' }
   | { type: 'REDO' }
-  | { type: 'IMPORT'; nodes: MindMapNode[]; annotations?: MindMapAnnotation[] }
+  | {
+      type: 'IMPORT'
+      nodes: MindMapNode[]
+      annotations?: MindMapAnnotation[]
+      shapes?: MindMapShape[]
+    }
   | { type: 'EXPORT' }
   | { type: 'SELECT_NODE'; nodeId: string | null }
   | { type: 'SELECT_ANNOTATION'; annotationId: string | null }
+  | { type: 'SELECT_SHAPE'; shapeId: string | null }
 
 interface MindMapContextValue {
   state: MindMapState
@@ -78,11 +130,14 @@ const initialState: MindMapState = {
       x: 0,
       y: 0,
       color: '#4f46e5',
+      textSize: 'medium',
     },
   ],
   annotations: [],
+  shapes: [],
   selectedNodeId: ROOT_NODE_ID,
   selectedAnnotationId: null,
+  selectedShapeId: null,
   history: {
     past: [],
     future: [],
@@ -117,6 +172,10 @@ function isMindMapNode(value: unknown): value is MindMapNode {
     return false
   }
 
+  const normalizedSize = normalizeTextSize((node as { textSize?: unknown }).textSize)
+  const typedNode = node as { textSize: TextSize }
+  typedNode.textSize = normalizedSize
+
   return true
 }
 
@@ -138,7 +197,71 @@ function isMindMapAnnotation(value: unknown): value is MindMapAnnotation {
     return false
   }
 
+  const normalizedSize = normalizeTextSize((annotation as { textSize?: unknown }).textSize)
+  const typedAnnotation = annotation as { textSize: TextSize }
+  typedAnnotation.textSize = normalizedSize
+
   return true
+}
+
+function isMindMapShape(value: unknown): value is MindMapShape {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const shape = value as Partial<MindMapShape> & { kind?: string }
+  if (typeof shape.id !== 'string') {
+    return false
+  }
+
+  if (shape.kind === 'ring') {
+    const ring = shape as Partial<MindMapRing>
+
+    if (typeof ring.x !== 'number' || typeof ring.y !== 'number') {
+      return false
+    }
+
+    if (typeof ring.radius !== 'number' || typeof ring.thickness !== 'number') {
+      return false
+    }
+
+    if (typeof ring.color !== 'string') {
+      return false
+    }
+
+    return Number.isFinite(ring.radius) && Number.isFinite(ring.thickness) && ring.thickness > 0
+  }
+
+  if (shape.kind === 'ellipse') {
+    const ellipse = shape as Partial<MindMapEllipse>
+
+    if (typeof ellipse.x !== 'number' || typeof ellipse.y !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.radiusX !== 'number' || typeof ellipse.radiusY !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.thickness !== 'number') {
+      return false
+    }
+
+    if (typeof ellipse.color !== 'string') {
+      return false
+    }
+
+    return (
+      Number.isFinite(ellipse.radiusX) &&
+      Number.isFinite(ellipse.radiusY) &&
+      ellipse.radiusX > 0 &&
+      ellipse.radiusY > 0 &&
+      Number.isFinite(ellipse.thickness) &&
+      ellipse.thickness > 0
+    )
+  }
+
+  return false
 }
 
 function loadPersistedState(): MindMapState {
@@ -157,6 +280,8 @@ function loadPersistedState(): MindMapState {
       annotations?: unknown
       selectedNodeId?: unknown
       selectedAnnotationId?: unknown
+      shapes?: unknown
+      selectedShapeId?: unknown
     }
 
     if (!Array.isArray(parsed.nodes)) {
@@ -172,6 +297,8 @@ function loadPersistedState(): MindMapState {
       ? parsed.annotations.filter(isMindMapAnnotation)
       : []
 
+    const shapes = Array.isArray(parsed.shapes) ? parsed.shapes.filter(isMindMapShape) : []
+
     const selectedNodeId =
       typeof parsed.selectedNodeId === 'string' && nodes.some((node) => node.id === parsed.selectedNodeId)
         ? parsed.selectedNodeId
@@ -183,11 +310,19 @@ function loadPersistedState(): MindMapState {
         ? parsed.selectedAnnotationId
         : annotations[0]?.id ?? null
 
+    const selectedShapeId =
+      typeof parsed.selectedShapeId === 'string' &&
+      shapes.some((shape) => shape.id === parsed.selectedShapeId)
+        ? parsed.selectedShapeId
+        : shapes[0]?.id ?? null
+
     return {
       nodes: nodes.map((node) => ({ ...node })),
       annotations: annotations.map((annotation) => ({ ...annotation })),
+      shapes: shapes.map((shape) => ({ ...shape })),
       selectedNodeId,
       selectedAnnotationId,
+      selectedShapeId,
       history: {
         past: [],
         future: [],
@@ -207,10 +342,15 @@ function cloneAnnotations(annotations: MindMapAnnotation[]) {
   return annotations.map((annotation) => ({ ...annotation }))
 }
 
+function cloneShapes(shapes: MindMapShape[]) {
+  return shapes.map((shape) => ({ ...shape }))
+}
+
 function cloneSnapshot(state: MindMapState): MindMapSnapshot {
   return {
     nodes: cloneNodes(state.nodes),
     annotations: cloneAnnotations(state.annotations),
+    shapes: cloneShapes(state.shapes),
   }
 }
 
@@ -219,20 +359,26 @@ function commitState(
   {
     nodes = state.nodes,
     annotations = state.annotations,
+    shapes = state.shapes,
     selectedNodeId = state.selectedNodeId,
     selectedAnnotationId = state.selectedAnnotationId,
+    selectedShapeId = state.selectedShapeId,
   }: {
     nodes?: MindMapNode[]
     annotations?: MindMapAnnotation[]
+    shapes?: MindMapShape[]
     selectedNodeId?: string | null
     selectedAnnotationId?: string | null
+    selectedShapeId?: string | null
   } = {},
 ): MindMapState {
   return {
     nodes,
     annotations,
+    shapes,
     selectedNodeId,
     selectedAnnotationId,
+    selectedShapeId,
     history: {
       past: [...state.history.past, cloneSnapshot(state)],
       future: [],
@@ -262,6 +408,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: nextNodes,
         selectedNodeId: action.node.id,
         selectedAnnotationId: null,
+        selectedShapeId: null,
       })
     }
     case 'UPDATE_NODE': {
@@ -306,9 +453,12 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         state.nodes[0]?.text !== 'Root' ||
         state.nodes[0]?.x !== 0 ||
         state.nodes[0]?.y !== 0 ||
-        state.nodes[0]?.color !== '#4f46e5'
+        state.nodes[0]?.color !== '#4f46e5' ||
+        state.nodes[0]?.textSize !== 'medium'
 
-      if (!hasExtraNodes && state.annotations.length === 0) {
+      const hasShapes = state.shapes.length > 0
+
+      if (!hasExtraNodes && state.annotations.length === 0 && !hasShapes) {
         return state
       }
 
@@ -319,13 +469,16 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         x: 0,
         y: 0,
         color: '#4f46e5',
+        textSize: 'medium',
       }
 
       return commitState(state, {
         nodes: [resetRoot],
         annotations: [],
+        shapes: [],
         selectedNodeId: ROOT_NODE_ID,
         selectedAnnotationId: null,
+        selectedShapeId: null,
       })
     }
     case 'ADD_ANNOTATION': {
@@ -334,6 +487,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         annotations: nextAnnotations,
         selectedAnnotationId: action.annotation.id,
         selectedNodeId: null,
+        selectedShapeId: null,
       })
     }
     case 'UPDATE_ANNOTATION': {
@@ -375,6 +529,60 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         selectedAnnotationId,
       })
     }
+    case 'ADD_SHAPE': {
+      const nextShapes = [...state.shapes, { ...action.shape }]
+      return commitState(state, {
+        shapes: nextShapes,
+        selectedShapeId: action.shape.id,
+        selectedNodeId: null,
+        selectedAnnotationId: null,
+      })
+    }
+    case 'UPDATE_SHAPE': {
+      const nextShapes = state.shapes.map((shape) => {
+        if (shape.id !== action.shapeId) {
+          return shape
+        }
+
+        if (shape.kind === 'ring') {
+          const updates = action.updates as Partial<Omit<MindMapRing, 'id' | 'kind'>>
+          return { ...shape, ...updates, id: shape.id, kind: 'ring' as const }
+        }
+
+        const updates = action.updates as Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
+        return { ...shape, ...updates, id: shape.id, kind: 'ellipse' as const }
+      })
+      return commitState(state, { shapes: nextShapes })
+    }
+    case 'MOVE_SHAPE': {
+      const nextShapes = state.shapes.map((shape) =>
+        shape.id === action.shapeId
+          ? {
+              ...shape,
+              x: action.x,
+              y: action.y,
+            }
+          : shape,
+      )
+      return commitState(state, { shapes: nextShapes })
+    }
+    case 'DELETE_SHAPE': {
+      if (!state.shapes.some((shape) => shape.id === action.shapeId)) {
+        return state
+      }
+
+      const nextShapes = state.shapes.filter((shape) => shape.id !== action.shapeId)
+
+      const selectedShapeId =
+        state.selectedShapeId && state.selectedShapeId === action.shapeId
+          ? null
+          : state.selectedShapeId
+
+      return commitState(state, {
+        shapes: nextShapes,
+        selectedShapeId,
+      })
+    }
     case 'UNDO': {
       if (state.history.past.length === 0) {
         return state
@@ -397,11 +605,19 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
           ? state.selectedAnnotationId
           : previousSnapshot.annotations[0]?.id ?? null
 
+      const selectedShapeId =
+        state.selectedShapeId &&
+        previousSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
+          ? state.selectedShapeId
+          : previousSnapshot.shapes[0]?.id ?? null
+
       return {
         nodes: cloneNodes(previousSnapshot.nodes),
         annotations: cloneAnnotations(previousSnapshot.annotations),
+        shapes: cloneShapes(previousSnapshot.shapes),
         selectedNodeId,
         selectedAnnotationId,
+        selectedShapeId,
         history: {
           past,
           future,
@@ -426,11 +642,19 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
           ? state.selectedAnnotationId
           : nextSnapshot.annotations[0]?.id ?? null
 
+      const selectedShapeId =
+        state.selectedShapeId &&
+        nextSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
+          ? state.selectedShapeId
+          : nextSnapshot.shapes[0]?.id ?? null
+
       return {
         nodes: cloneNodes(nextSnapshot.nodes),
         annotations: cloneAnnotations(nextSnapshot.annotations),
+        shapes: cloneShapes(nextSnapshot.shapes),
         selectedNodeId,
         selectedAnnotationId,
+        selectedShapeId,
         history: {
           past,
           future: restFuture,
@@ -442,11 +666,14 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       const importedAnnotations = action.annotations
         ? cloneAnnotations(action.annotations)
         : []
+      const importedShapes = action.shapes ? cloneShapes(action.shapes) : []
       return {
         nodes: importedNodes,
         annotations: importedAnnotations,
+        shapes: importedShapes,
         selectedNodeId: importedNodes[0]?.id ?? null,
         selectedAnnotationId: importedAnnotations[0]?.id ?? null,
+        selectedShapeId: importedShapes[0]?.id ?? null,
         history: {
           past: [],
           future: [],
@@ -464,6 +691,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         ...state,
         selectedNodeId: action.nodeId,
         selectedAnnotationId: action.nodeId ? null : state.selectedAnnotationId,
+        selectedShapeId: action.nodeId ? null : state.selectedShapeId,
       }
     }
     case 'SELECT_ANNOTATION': {
@@ -477,6 +705,18 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         ...state,
         selectedAnnotationId: action.annotationId,
         selectedNodeId: action.annotationId ? null : state.selectedNodeId,
+        selectedShapeId: action.annotationId ? null : state.selectedShapeId,
+      }
+    }
+    case 'SELECT_SHAPE': {
+      if (action.shapeId && !state.shapes.some((shape) => shape.id === action.shapeId)) {
+        return state
+      }
+      return {
+        ...state,
+        selectedShapeId: action.shapeId,
+        selectedNodeId: action.shapeId ? null : state.selectedNodeId,
+        selectedAnnotationId: action.shapeId ? null : state.selectedAnnotationId,
       }
     }
     default:
@@ -496,8 +736,10 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
     const payload = JSON.stringify({
       nodes: state.nodes,
       annotations: state.annotations,
+      shapes: state.shapes,
       selectedNodeId: state.selectedNodeId,
       selectedAnnotationId: state.selectedAnnotationId,
+      selectedShapeId: state.selectedShapeId,
     })
 
     try {
@@ -505,7 +747,14 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Failed to persist mind map state', error)
     }
-  }, [state.annotations, state.nodes, state.selectedAnnotationId, state.selectedNodeId])
+  }, [
+    state.annotations,
+    state.nodes,
+    state.selectedAnnotationId,
+    state.selectedNodeId,
+    state.selectedShapeId,
+    state.shapes,
+  ])
 
   return <MindMapContext.Provider value={value}>{children}</MindMapContext.Provider>
 }
