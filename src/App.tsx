@@ -7,6 +7,7 @@ import {
   type MindMapArrow,
   type MindMapNode,
   type MindMapRectangle,
+  type MindMapLine,
   type MindMapShape,
   type TextSize,
   useMindMap,
@@ -62,14 +63,23 @@ const RECTANGLE_HIT_PADDING = 6
 const RECTANGLE_DEFAULT_COLOR = '#34d399'
 const ARROW_DEFAULT_WIDTH = 340
 const ARROW_DEFAULT_HEIGHT = 180
-const ARROW_MIN_WIDTH = 160
-const ARROW_MIN_HEIGHT = 90
+const ARROW_MIN_WIDTH = 36
+const ARROW_MIN_HEIGHT = 6
 const ARROW_DEFAULT_THICKNESS = 60
+const ARROW_MIN_THICKNESS = 2
 const ARROW_HIT_PADDING = 10
 const ARROW_DEFAULT_COLOR = '#f97316'
 const ARROW_HEAD_RATIO = 0.34
-const ARROW_SHAFT_RATIO = 0.42
-const ARROW_MIN_HEAD_LENGTH = 30
+const ARROW_MIN_HEAD_LENGTH = 14
+const ARROW_MIN_SHAFT_HALF_HEIGHT = 1.2
+const ARROW_DEFAULT_ANGLE = 0
+const LINE_DEFAULT_LENGTH = 280
+const LINE_DEFAULT_THICKNESS = 8
+const LINE_MIN_LENGTH = 20
+const LINE_MIN_THICKNESS = 1.2
+const LINE_HIT_PADDING = 6
+const LINE_DEFAULT_COLOR = '#22d3ee'
+const LINE_DEFAULT_ANGLE = 0
 
 type Point = { x: number; y: number }
 
@@ -78,6 +88,11 @@ type ArrowGeometry = {
   halfHeight: number
   headLength: number
   shaftHalfHeight: number
+}
+
+type LineGeometry = {
+  halfLength: number
+  halfThickness: number
 }
 
 const tracePolygon = (context: CanvasRenderingContext2D, points: Point[]) => {
@@ -94,19 +109,60 @@ const tracePolygon = (context: CanvasRenderingContext2D, points: Point[]) => {
   context.closePath()
 }
 
+const rotatePoint = (point: Point, angle: number): Point => {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return {
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos,
+  }
+}
+
+const rotateAndTranslate = (point: Point, center: Point, angle: number): Point => {
+  const rotated = rotatePoint(point, angle)
+  return {
+    x: rotated.x + center.x,
+    y: rotated.y + center.y,
+  }
+}
+
+const toLocalCoordinates = (point: Point, center: Point, angle: number): Point => {
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+  const cos = Math.cos(-angle)
+  const sin = Math.sin(-angle)
+  return {
+    x: dx * cos - dy * sin,
+    y: dx * sin + dy * cos,
+  }
+}
+
 const getArrowGeometry = (shape: MindMapArrow): ArrowGeometry => {
-  const halfWidth = Math.max(shape.width / 2, ARROW_MIN_WIDTH / 2)
-  const halfHeight = Math.max(shape.height / 2, ARROW_MIN_HEIGHT / 2)
+  const halfWidth = Math.max(Math.abs(shape.width) / 2, ARROW_MIN_WIDTH / 2)
+  const halfHeight = Math.max(Math.abs(shape.height) / 2, ARROW_MIN_HEIGHT / 2)
   const baseHeadLength = Math.max(halfWidth * ARROW_HEAD_RATIO, ARROW_MIN_HEAD_LENGTH)
   const headLength = Math.min(baseHeadLength, halfWidth)
-  const baseShaftHalf = Math.max(shape.thickness / 2, halfHeight * ARROW_SHAFT_RATIO)
-  const shaftHalfHeight = Math.min(baseShaftHalf, Math.max(halfHeight - 6, halfHeight * 0.9))
+  const rawThickness = Math.max(Math.abs(shape.thickness) / 2, ARROW_MIN_THICKNESS / 2)
+  const shaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(rawThickness, halfHeight),
+  )
 
   return {
     halfWidth,
     halfHeight,
     headLength,
-    shaftHalfHeight: Math.max(6, Math.min(shaftHalfHeight, halfHeight)),
+    shaftHalfHeight,
+  }
+}
+
+const getLineGeometry = (shape: MindMapLine): LineGeometry => {
+  const halfLength = Math.max(Math.abs(shape.length) / 2, LINE_MIN_LENGTH / 2)
+  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, LINE_MIN_THICKNESS / 2)
+
+  return {
+    halfLength,
+    halfThickness,
   }
 }
 
@@ -114,24 +170,27 @@ const buildArrowPolygon = (shape: MindMapArrow, extraPadding = 0): Point[] => {
   const { halfWidth, halfHeight, headLength, shaftHalfHeight } = getArrowGeometry(shape)
   const paddedHalfWidth = halfWidth + extraPadding
   const paddedHalfHeight = halfHeight + extraPadding
-  const paddedHeadLength = Math.min(headLength + extraPadding, paddedHalfWidth)
-  const paddedShaftHalfHeight = Math.min(
-    Math.max(shaftHalfHeight + extraPadding, 4),
-    paddedHalfHeight - 2,
+  const paddedHeadLength = Math.min(paddedHalfWidth, headLength + extraPadding)
+  const paddedShaftHalfHeight = Math.max(
+    ARROW_MIN_SHAFT_HALF_HEIGHT,
+    Math.min(shaftHalfHeight + extraPadding, paddedHalfHeight),
   )
-  const leftX = shape.x - paddedHalfWidth
-  const headStartX = shape.x + paddedHalfWidth - paddedHeadLength
-  const tipX = shape.x + paddedHalfWidth
 
-  return [
-    { x: leftX, y: shape.y - paddedShaftHalfHeight },
-    { x: headStartX, y: shape.y - paddedShaftHalfHeight },
-    { x: headStartX, y: shape.y - paddedHalfHeight },
-    { x: tipX, y: shape.y },
-    { x: headStartX, y: shape.y + paddedHalfHeight },
-    { x: headStartX, y: shape.y + paddedShaftHalfHeight },
-    { x: leftX, y: shape.y + paddedShaftHalfHeight },
+  const angle = shape.angle ?? 0
+  const center = { x: shape.x, y: shape.y }
+  const headStartX = paddedHalfWidth - paddedHeadLength
+
+  const localPoints: Point[] = [
+    { x: -paddedHalfWidth, y: -paddedShaftHalfHeight },
+    { x: headStartX, y: -paddedShaftHalfHeight },
+    { x: headStartX, y: -paddedHalfHeight },
+    { x: paddedHalfWidth, y: 0 },
+    { x: headStartX, y: paddedHalfHeight },
+    { x: headStartX, y: paddedShaftHalfHeight },
+    { x: -paddedHalfWidth, y: paddedShaftHalfHeight },
   ]
+
+  return localPoints.map((point) => rotateAndTranslate(point, center, angle))
 }
 
 const isPointInPolygon = (point: Point, polygon: Point[]): boolean => {
@@ -589,13 +648,80 @@ export default function App() {
           const geometry = getArrowGeometry(shape)
           const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
           const handleHalf = handleSize / 2
-          const handleX = shape.x + geometry.halfWidth
-          const handleY = shape.y + geometry.halfHeight
+          const handlePoint = rotateAndTranslate(
+            { x: geometry.halfWidth, y: geometry.halfHeight },
+            { x: shape.x, y: shape.y },
+            shape.angle ?? 0,
+          )
           context.fillStyle = '#facc15'
-          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          context.fillRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
           context.strokeStyle = '#0f172a'
-          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          context.strokeRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+        }
+
+        context.restore()
+        return
+      }
+
+      if (shape.kind === 'line') {
+        const geometry = getLineGeometry(shape)
+        const angle = shape.angle ?? 0
+        const center = { x: shape.x, y: shape.y }
+        const color = shape.color || LINE_DEFAULT_COLOR
+        const start = rotateAndTranslate({ x: -geometry.halfLength, y: 0 }, center, angle)
+        const end = rotateAndTranslate({ x: geometry.halfLength, y: 0 }, center, angle)
+        const strokeWidth = Math.max(geometry.halfThickness * 2, LINE_MIN_THICKNESS)
+
+        context.lineCap = 'round'
+        context.strokeStyle = color
+        context.lineWidth = strokeWidth
+        context.beginPath()
+        context.moveTo(start.x, start.y)
+        context.lineTo(end.x, end.y)
+        context.stroke()
+
+        if (shape.id === selectedShapeId) {
+          const highlightWidth = Math.max(Math.max(2 / scale, 1.5), strokeWidth)
+          context.beginPath()
+          context.moveTo(start.x, start.y)
+          context.lineTo(end.x, end.y)
+          context.lineWidth = highlightWidth
+          context.strokeStyle = '#f97316'
+          context.stroke()
+
+          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
+          const handleHalf = handleSize / 2
+          const handlePoint = rotateAndTranslate(
+            { x: geometry.halfLength, y: 0 },
+            center,
+            angle,
+          )
+          context.fillStyle = '#facc15'
+          context.fillRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
+          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
+          context.strokeStyle = '#0f172a'
+          context.strokeRect(
+            handlePoint.x - handleHalf,
+            handlePoint.y - handleHalf,
+            handleSize,
+            handleSize,
+          )
         }
 
         context.restore()
@@ -932,14 +1058,33 @@ export default function App() {
 
           if (shape.kind === 'arrow') {
             const geometry = getArrowGeometry(shape)
-            const handleX = shape.x + geometry.halfWidth
-            const handleY = shape.y + geometry.halfHeight
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
 
             return (
-              scenePoint.x >= handleX - handleHalfSize &&
-              scenePoint.x <= handleX + handleHalfSize &&
-              scenePoint.y >= handleY - handleHalfSize &&
-              scenePoint.y <= handleY + handleHalfSize
+              localPoint.x >= geometry.halfWidth - handleHalfSize &&
+              localPoint.x <= geometry.halfWidth + handleHalfSize &&
+              localPoint.y >= geometry.halfHeight - handleHalfSize &&
+              localPoint.y <= geometry.halfHeight + handleHalfSize
+            )
+          }
+
+          if (shape.kind === 'line') {
+            const geometry = getLineGeometry(shape)
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
+
+            return (
+              localPoint.x >= geometry.halfLength - handleHalfSize &&
+              localPoint.x <= geometry.halfLength + handleHalfSize &&
+              localPoint.y >= -handleHalfSize &&
+              localPoint.y <= handleHalfSize
             )
           }
 
@@ -1099,6 +1244,27 @@ export default function App() {
           if (shape.kind === 'arrow') {
             const polygon = buildArrowPolygon(shape, ARROW_HIT_PADDING)
             return isPointInPolygon(scenePoint, polygon)
+          }
+
+          if (shape.kind === 'line') {
+            const geometry = getLineGeometry(shape)
+            const localPoint = toLocalCoordinates(
+              scenePoint,
+              { x: shape.x, y: shape.y },
+              shape.angle ?? 0,
+            )
+            const padding = LINE_HIT_PADDING
+            const halfLength = geometry.halfLength
+            const halfThickness = geometry.halfThickness
+
+            const withinLength =
+              localPoint.x >= -halfLength - padding && localPoint.x <= halfLength + padding
+
+            if (!withinLength) {
+              return false
+            }
+
+            return Math.abs(localPoint.y) <= halfThickness + padding
           }
 
           return false
@@ -1265,32 +1431,90 @@ export default function App() {
         }
 
         if (shape.kind === 'arrow') {
-          const deltaX = Math.abs(scenePoint.x - shape.x)
-          const deltaY = Math.abs(scenePoint.y - shape.y)
+          const dx = scenePoint.x - shape.x
+          const dy = scenePoint.y - shape.y
+          const distance = Math.hypot(dx, dy)
+          if (distance < 0.5) {
+            return
+          }
+
+          const nextAngle = Math.atan2(dy, dx)
+          const localPoint = toLocalCoordinates(
+            scenePoint,
+            { x: shape.x, y: shape.y },
+            nextAngle,
+          )
           const minHalfWidth = ARROW_MIN_WIDTH / 2
           const minHalfHeight = ARROW_MIN_HEIGHT / 2
-          const nextHalfWidth = Math.max(minHalfWidth, deltaX)
-          const nextHalfHeight = Math.max(minHalfHeight, deltaY)
+          const nextHalfWidth = Math.max(minHalfWidth, Math.abs(localPoint.x))
+          const nextHalfHeight = Math.max(minHalfHeight, Math.abs(localPoint.y))
           const nextWidth = nextHalfWidth * 2
           const nextHeight = nextHalfHeight * 2
+          const nextThickness = Math.max(
+            ARROW_MIN_THICKNESS,
+            Math.min(shape.thickness, nextHeight),
+          )
 
           if (
             Math.abs(nextWidth - shape.width) < 0.5 &&
-            Math.abs(nextHeight - shape.height) < 0.5
+            Math.abs(nextHeight - shape.height) < 0.5 &&
+            Math.abs(nextThickness - shape.thickness) < 0.5 &&
+            Math.abs(nextAngle - (shape.angle ?? 0)) < 0.01
           ) {
             return
           }
 
-          const maxThickness = Math.max(4, nextHeight - 12)
-          const nextThickness = Math.min(shape.thickness, maxThickness)
+          dispatch({
+            type: 'UPDATE_SHAPE',
+            shapeId: shape.id,
+            updates: {
+              width: nextWidth,
+              height: nextHeight,
+              thickness: nextThickness,
+              angle: nextAngle,
+            },
+          })
+          return
+        }
+
+        if (shape.kind === 'line') {
+          const dx = scenePoint.x - shape.x
+          const dy = scenePoint.y - shape.y
+          const distance = Math.hypot(dx, dy)
+          if (distance < 0.25) {
+            return
+          }
+
+          const nextAngle = Math.atan2(dy, dx)
+          const localPoint = toLocalCoordinates(
+            scenePoint,
+            { x: shape.x, y: shape.y },
+            nextAngle,
+          )
+          const nextHalfLength = Math.max(LINE_MIN_LENGTH / 2, Math.abs(localPoint.x))
+          const nextLength = nextHalfLength * 2
+          const nextThickness = Math.max(LINE_MIN_THICKNESS, Math.abs(localPoint.y) * 2)
+
+          if (
+            Math.abs(nextLength - shape.length) < 0.5 &&
+            Math.abs(nextThickness - shape.thickness) < 0.5 &&
+            Math.abs(nextAngle - (shape.angle ?? 0)) < 0.01
+          ) {
+            return
+          }
 
           dispatch({
             type: 'UPDATE_SHAPE',
             shapeId: shape.id,
-            updates: { width: nextWidth, height: nextHeight, thickness: nextThickness },
+            updates: {
+              length: nextLength,
+              thickness: nextThickness,
+              angle: nextAngle,
+            },
           })
           return
         }
+
         return
       }
 
@@ -1577,7 +1801,35 @@ export default function App() {
         width: ARROW_DEFAULT_WIDTH,
         height: ARROW_DEFAULT_HEIGHT,
         thickness: ARROW_DEFAULT_THICKNESS,
+        angle: ARROW_DEFAULT_ANGLE,
         color: ARROW_DEFAULT_COLOR,
+      },
+    })
+  }, [dispatch])
+
+  const handleAddLine = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+
+    const newShapeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_SHAPE',
+      shape: {
+        id: newShapeId,
+        kind: 'line',
+        x: worldCenterX,
+        y: worldCenterY,
+        length: LINE_DEFAULT_LENGTH,
+        thickness: LINE_DEFAULT_THICKNESS,
+        angle: LINE_DEFAULT_ANGLE,
+        color: LINE_DEFAULT_COLOR,
       },
     })
   }, [dispatch])
@@ -1995,9 +2247,9 @@ export default function App() {
 
         const width = Math.max(ARROW_MIN_WIDTH, Math.abs(arrow.width))
         const height = Math.max(ARROW_MIN_HEIGHT, Math.abs(arrow.height))
-        const thickness = Math.max(4, Math.abs(arrow.thickness))
+        const thickness = Math.max(ARROW_MIN_THICKNESS, Math.abs(arrow.thickness))
         const color = typeof arrow.color === 'string' ? arrow.color : ARROW_DEFAULT_COLOR
-        const maxThickness = Math.max(4, height - 12)
+        const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
 
         accumulator.push({
           id: arrow.id,
@@ -2006,8 +2258,40 @@ export default function App() {
           y: arrow.y,
           width,
           height,
-          thickness: Math.min(thickness, maxThickness),
+          thickness: Math.min(thickness, height),
+          angle,
           color,
+        })
+        return accumulator
+      }
+
+      if (shape.kind === 'line') {
+        const line = shape as Partial<MindMapLine>
+
+        if (
+          typeof line.id !== 'string' ||
+          typeof line.x !== 'number' ||
+          typeof line.y !== 'number' ||
+          typeof line.length !== 'number' ||
+          typeof line.thickness !== 'number'
+        ) {
+          return accumulator
+        }
+
+        const length = Math.max(LINE_MIN_LENGTH, Math.abs(line.length))
+        const thickness = Math.max(LINE_MIN_THICKNESS, Math.abs(line.thickness))
+        const color = typeof line.color === 'string' ? line.color : LINE_DEFAULT_COLOR
+        const angle = typeof line.angle === 'number' && Number.isFinite(line.angle) ? line.angle : 0
+
+        accumulator.push({
+          id: line.id,
+          kind: 'line',
+          x: line.x,
+          y: line.y,
+          length,
+          thickness,
+          color,
+          angle,
         })
         return accumulator
       }
@@ -2228,6 +2512,26 @@ export default function App() {
                 />
               </svg>
               <span className="visually-hidden">Arrow</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddLine}
+              title="Add a straight line connector"
+              aria-label="Add line"
+              className="mindmap-toolbar__icon-button"
+            >
+              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+                <line
+                  x1="5"
+                  y1="18"
+                  x2="19"
+                  y2="6"
+                  stroke="#22d3ee"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="visually-hidden">Line</span>
             </button>
           </div>
         </div>

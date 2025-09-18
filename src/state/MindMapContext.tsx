@@ -77,16 +77,34 @@ export interface MindMapArrow {
   width: number
   height: number
   thickness: number
+  angle: number
   color: string
 }
 
-export type MindMapShape = MindMapRing | MindMapEllipse | MindMapRectangle | MindMapArrow
+export interface MindMapLine {
+  id: string
+  kind: 'line'
+  x: number
+  y: number
+  length: number
+  thickness: number
+  angle: number
+  color: string
+}
+
+export type MindMapShape =
+  | MindMapRing
+  | MindMapEllipse
+  | MindMapRectangle
+  | MindMapArrow
+  | MindMapLine
 
 type MindMapShapeUpdate =
   | Partial<Omit<MindMapRing, 'id' | 'kind'>>
   | Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
   | Partial<Omit<MindMapRectangle, 'id' | 'kind'>>
   | Partial<Omit<MindMapArrow, 'id' | 'kind'>>
+  | Partial<Omit<MindMapLine, 'id' | 'kind'>>
 
 interface MindMapSnapshot {
   nodes: MindMapNode[]
@@ -333,6 +351,9 @@ function isMindMapShape(value: unknown): value is MindMapShape {
       return false
     }
 
+    const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
+    ;(arrow as { angle: number }).angle = angle
+
     return (
       Number.isFinite(arrow.width) &&
       Number.isFinite(arrow.height) &&
@@ -340,6 +361,32 @@ function isMindMapShape(value: unknown): value is MindMapShape {
       arrow.height > 0 &&
       Number.isFinite(arrow.thickness) &&
       arrow.thickness > 0
+    )
+  }
+
+  if (shape.kind === 'line') {
+    const line = shape as Partial<MindMapLine>
+
+    if (typeof line.x !== 'number' || typeof line.y !== 'number') {
+      return false
+    }
+
+    if (typeof line.length !== 'number' || typeof line.thickness !== 'number') {
+      return false
+    }
+
+    if (typeof line.color !== 'string') {
+      return false
+    }
+
+    const angle = typeof line.angle === 'number' && Number.isFinite(line.angle) ? line.angle : 0
+    ;(line as { angle: number }).angle = angle
+
+    return (
+      Number.isFinite(line.length) &&
+      line.length > 0 &&
+      Number.isFinite(line.thickness) &&
+      line.thickness > 0
     )
   }
 
@@ -641,8 +688,13 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
           return { ...shape, ...updates, id: shape.id, kind: 'rectangle' as const }
         }
 
-        const updates = action.updates as Partial<Omit<MindMapArrow, 'id' | 'kind'>>
-        return { ...shape, ...updates, id: shape.id, kind: 'arrow' as const }
+        if (shape.kind === 'arrow') {
+          const updates = action.updates as Partial<Omit<MindMapArrow, 'id' | 'kind'>>
+          return { ...shape, ...updates, id: shape.id, kind: 'arrow' as const }
+        }
+
+        const updates = action.updates as Partial<Omit<MindMapLine, 'id' | 'kind'>>
+        return { ...shape, ...updates, id: shape.id, kind: 'line' as const }
       })
       return commitState(state, { shapes: nextShapes })
     }
