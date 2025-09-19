@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import jsPDF from 'jspdf'
 import {
   ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
@@ -2238,6 +2239,33 @@ export default function App() {
     })
   }, [closeExportMenu])
 
+  const handleExportPdf = useCallback(() => {
+    closeExportMenu()
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const { width, height } = canvas
+    const exportCanvas = document.createElement('canvas')
+    exportCanvas.width = width
+    exportCanvas.height = height
+    const context = exportCanvas.getContext('2d')
+    if (!context) {
+      return
+    }
+
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, width, height)
+    context.drawImage(canvas, 0, 0)
+
+    const imageData = exportCanvas.toDataURL('image/png')
+    const orientation = width >= height ? 'l' : 'p'
+    const pdf = new jsPDF({ orientation, unit: 'pt', format: [width, height] })
+    pdf.addImage(imageData, 'PNG', 0, 0, width, height)
+    pdf.save('mindmap.pdf')
+  }, [closeExportMenu])
+
   const sanitizeImportedNodes = useCallback((value: unknown) => {
     if (!Array.isArray(value)) {
       return null
@@ -2828,8 +2856,8 @@ export default function App() {
               <button type="button" onClick={handleExportPng} role="menuitem">
                 Export PNG
               </button>
-              <button type="button" disabled role="menuitem" title="PDF export is coming soon">
-                Export PDF (coming soon)
+              <button type="button" onClick={handleExportPdf} role="menuitem">
+                Export PDF
               </button>
             </div>
           ) : null}
