@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
+  ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
   normalizeTextSize,
   type MindMapAnnotation,
@@ -1700,6 +1701,34 @@ export default function App() {
     })
   }, [dispatch, nodes, selectedNode])
 
+  const handleAddStandaloneNode = useCallback(() => {
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+    const paletteIndex = nodes.length % FALLBACK_COLORS.length
+    const nodeColor = FALLBACK_COLORS[paletteIndex]
+
+    const newNodeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_NODE',
+      node: {
+        id: newNodeId,
+        parentId: null,
+        text: 'New Idea',
+        x: worldCenterX,
+        y: worldCenterY,
+        color: nodeColor,
+        textSize: 'medium',
+      },
+    })
+  }, [dispatch, nodes])
+
   const handleAddAnnotation = useCallback(() => {
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
@@ -1874,7 +1903,7 @@ export default function App() {
       return
     }
 
-    if (selectedNode.parentId === null) {
+    if (selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID) {
       return
     }
 
@@ -1914,7 +1943,7 @@ export default function App() {
     }
 
     return (
-      rootNode.id === 'root' &&
+      rootNode.id === ROOT_NODE_ID &&
       rootNode.parentId === null &&
       rootNode.text === 'Root' &&
       rootNode.x === 0 &&
@@ -2375,7 +2404,9 @@ export default function App() {
     fileInputRef.current?.click()
   }, [closeExportMenu])
 
-  const canDeleteNode = Boolean(selectedNode && selectedNode.parentId !== null)
+  const canDeleteNode = Boolean(
+    selectedNode && !(selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID),
+  )
   const canDeleteAnnotation = Boolean(selectedAnnotation)
   const canDeleteShape = Boolean(selectedShape)
   const canDelete = canDeleteNode || canDeleteAnnotation || canDeleteShape
@@ -2476,6 +2507,13 @@ export default function App() {
             {isToolbarCollapsed ? '▾' : '▴'}
           </button>
           <div className="mindmap-toolbar__header-actions">
+            <button
+              type="button"
+              onClick={handleAddStandaloneNode}
+              title="Add a new idea that starts disconnected"
+            >
+              Add idea
+            </button>
             <button type="button" onClick={handleAddChild} title="Enter">
               Add child
             </button>

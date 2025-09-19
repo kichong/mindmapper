@@ -161,7 +161,7 @@ interface MindMapContextValue {
 
 const MindMapContext = createContext<MindMapContextValue | undefined>(undefined)
 
-const ROOT_NODE_ID = 'root'
+export const ROOT_NODE_ID = 'root'
 
 const initialState: MindMapState = {
   nodes: [
