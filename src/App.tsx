@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import jsPDF from 'jspdf'
 import {
   ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
@@ -14,6 +13,7 @@ import {
   type TextSize,
   useMindMap,
 } from './state/MindMapContext'
+import { convertDataUrlToBytes, createPdfBytesFromJpeg } from './utils/pdf'
 import './App.css'
 
 const NODE_BASE_RADIUS = 40
@@ -2259,11 +2259,16 @@ export default function App() {
     context.fillRect(0, 0, width, height)
     context.drawImage(canvas, 0, 0)
 
-    const imageData = exportCanvas.toDataURL('image/png')
-    const orientation = width >= height ? 'l' : 'p'
-    const pdf = new jsPDF({ orientation, unit: 'pt', format: [width, height] })
-    pdf.addImage(imageData, 'PNG', 0, 0, width, height)
-    pdf.save('mindmap.pdf')
+    const imageDataUrl = exportCanvas.toDataURL('image/jpeg', 0.92)
+    const imageBytes = convertDataUrlToBytes(imageDataUrl)
+    const pdfBytes = createPdfBytesFromJpeg(imageBytes, width, height)
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'mindmap.pdf'
+    anchor.click()
+    URL.revokeObjectURL(url)
   }, [closeExportMenu])
 
   const sanitizeImportedNodes = useCallback((value: unknown) => {
