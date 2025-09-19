@@ -436,6 +436,27 @@ export default function App() {
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+
+  useEffect(() => {
+    if (!isLocked) {
+      return
+    }
+
+    const interaction = interactionRef.current
+    interactionRef.current = null
+
+    const canvas = canvasRef.current
+    if (canvas && interaction && canvas.hasPointerCapture(interaction.pointerId)) {
+      canvas.releasePointerCapture(interaction.pointerId)
+    }
+
+    if (canvas) {
+      canvas.style.cursor = 'grab'
+    }
+
+    pendingTextFocusRef.current = false
+  }, [isLocked])
 
   const getNodeRadius = useCallback(
     (node: MindMapNode) => {
@@ -516,6 +537,10 @@ export default function App() {
 
   const toggleToolbarCollapsed = useCallback(() => {
     setToolbarCollapsed((previous) => !previous)
+  }, [])
+
+  const toggleLock = useCallback(() => {
+    setIsLocked((previous) => !previous)
   }, [])
 
   const drawScene = useCallback(() => {
@@ -1118,15 +1143,21 @@ export default function App() {
         })
 
       if (hitResizeShape) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'shape-resize',
           pointerId: event.pointerId,
           shapeId: hitResizeShape.id,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1138,6 +1169,15 @@ export default function App() {
         .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
 
       if (hitNode) {
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'node',
           pointerId: event.pointerId,
@@ -1146,9 +1186,6 @@ export default function App() {
           offsetY: scenePoint.y - hitNode.y,
         }
 
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1175,6 +1212,15 @@ export default function App() {
         })
 
       if (hitAnnotation) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'annotation',
           pointerId: event.pointerId,
@@ -1183,9 +1229,6 @@ export default function App() {
           offsetY: scenePoint.y - hitAnnotation.y,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1297,6 +1340,15 @@ export default function App() {
         })
 
       if (hitShape) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'shape-move',
           pointerId: event.pointerId,
@@ -1305,9 +1357,6 @@ export default function App() {
           offsetY: scenePoint.y - hitShape.y,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1334,6 +1383,10 @@ export default function App() {
     const handlePointerMove = (event: PointerEvent) => {
       const interaction = interactionRef.current
       if (!interaction) {
+        return
+      }
+
+      if (isLocked && interaction.mode !== 'pan') {
         return
       }
 
@@ -1600,6 +1653,10 @@ export default function App() {
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         setTextDraft(hitNode.text)
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
         requestToolbarForEditing()
         event.preventDefault()
         return
@@ -1629,6 +1686,10 @@ export default function App() {
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setTextDraft(hitAnnotation.text)
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
         requestToolbarForEditing()
         event.preventDefault()
       }
@@ -1655,6 +1716,7 @@ export default function App() {
     adjustZoom,
     dispatch,
     focusInput,
+    isLocked,
     getNodeRadius,
     isToolbarCollapsed,
     measureAnnotation,
@@ -1663,6 +1725,10 @@ export default function App() {
   ])
 
   const handleAddChild = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     if (nodes.length === 0) {
       return
     }
@@ -1699,9 +1765,13 @@ export default function App() {
         textSize: 'medium',
       },
     })
-  }, [dispatch, nodes, selectedNode])
+  }, [dispatch, isLocked, nodes, selectedNode])
 
   const handleAddStandaloneNode = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1727,9 +1797,13 @@ export default function App() {
         textSize: 'medium',
       },
     })
-  }, [dispatch, nodes])
+  }, [dispatch, isLocked, nodes])
 
   const handleAddAnnotation = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1751,9 +1825,13 @@ export default function App() {
         textSize: 'medium',
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddRing = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1777,9 +1855,13 @@ export default function App() {
         color: RING_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddEllipse = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1804,9 +1886,13 @@ export default function App() {
         color: ELLIPSE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddRectangle = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1831,9 +1917,13 @@ export default function App() {
         color: RECTANGLE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddArrow = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1859,9 +1949,13 @@ export default function App() {
         color: ARROW_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddLine = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1886,9 +1980,13 @@ export default function App() {
         color: LINE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleDeleteSelection = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     if (selectedShape) {
       dispatch({ type: 'DELETE_SHAPE', shapeId: selectedShape.id })
       return
@@ -1908,21 +2006,21 @@ export default function App() {
     }
 
     dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
+  }, [dispatch, isLocked, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
 
   const handleUndo = useCallback(() => {
-    if (past.length === 0) {
+    if (isLocked || past.length === 0) {
       return
     }
     dispatch({ type: 'UNDO' })
-  }, [dispatch, past])
+  }, [dispatch, isLocked, past])
 
   const handleRedo = useCallback(() => {
-    if (future.length === 0) {
+    if (isLocked || future.length === 0) {
       return
     }
     dispatch({ type: 'REDO' })
-  }, [dispatch, future])
+  }, [dispatch, future, isLocked])
 
   const isPristineState = useMemo(() => {
     if (annotations.length > 0) {
@@ -1955,12 +2053,12 @@ export default function App() {
   const canClear = !isPristineState
 
   const handleClearAll = useCallback(() => {
-    if (!canClear) {
+    if (isLocked || !canClear) {
       return
     }
 
     dispatch({ type: 'CLEAR_ALL' })
-  }, [canClear, dispatch])
+  }, [canClear, dispatch, isLocked])
 
   const panByPixels = useCallback((deltaX: number, deltaY: number) => {
     setViewTransform((previous) => {
@@ -2360,6 +2458,11 @@ export default function App() {
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
+      if (isLocked) {
+        event.target.value = ''
+        return
+      }
+
       const file = event.target.files?.[0]
       if (!file) {
         return
@@ -2396,13 +2499,23 @@ export default function App() {
       reader.readAsText(file)
       event.target.value = ''
     },
-    [dispatch, sanitizeImportedAnnotations, sanitizeImportedNodes, sanitizeImportedShapes],
+    [
+      dispatch,
+      isLocked,
+      sanitizeImportedAnnotations,
+      sanitizeImportedNodes,
+      sanitizeImportedShapes,
+    ],
   )
 
   const handleImportJson = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     closeExportMenu()
     fileInputRef.current?.click()
-  }, [closeExportMenu])
+  }, [closeExportMenu, isLocked])
 
   const canDeleteNode = Boolean(
     selectedNode && !(selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID),
@@ -2421,7 +2534,7 @@ export default function App() {
       const value = event.target.value
       setTextDraft(value)
 
-      if (!selectedTextTarget) {
+      if (isLocked || !selectedTextTarget) {
         return
       }
 
@@ -2440,12 +2553,12 @@ export default function App() {
         updates: { text: value },
       })
     },
-    [dispatch, selectedTextTarget],
+    [dispatch, isLocked, selectedTextTarget],
   )
 
   const handleTextSizeChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
-      if (!selectedTextTarget) {
+      if (isLocked || !selectedTextTarget) {
         return
       }
 
@@ -2466,7 +2579,7 @@ export default function App() {
         updates: { textSize: nextSize },
       })
     },
-    [dispatch, selectedTextTarget],
+    [dispatch, isLocked, selectedTextTarget],
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
@@ -2474,21 +2587,32 @@ export default function App() {
   const isEditingNode = selectedTextTarget?.kind === 'node'
   const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
   const textEditorLabel = isEditingNode ? 'Node text' : isEditingAnnotation ? 'Text box text' : 'Edit text'
-  const textEditorPlaceholder = isEditingNode
+  const isTextEditingDisabled = isLocked || !selectedTextTarget
+  const textEditorPlaceholder = isLocked
+    ? 'Unlock editing to type'
+    : isEditingNode
     ? 'Type here to rename the node'
     : isEditingAnnotation
     ? 'Type here to update the text box'
     : 'Select a node or text box first'
-  const textInputAriaLabel = isEditingNode
+  const textInputAriaLabel = isLocked
+    ? 'Text editing is locked'
+    : isEditingNode
     ? 'Selected node text'
     : isEditingAnnotation
     ? 'Selected text box text'
     : 'Edit text'
-  const textSizeAriaLabel = isEditingNode
+  const textSizeAriaLabel = isLocked
+    ? 'Text size selection is locked'
+    : isEditingNode
     ? 'Selected node text size'
     : isEditingAnnotation
     ? 'Selected text box size'
     : 'Text size'
+  const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
+  const lockButtonTitle = isLocked
+    ? 'Switch back to editing mode'
+    : 'Lock editing so you can explore safely'
 
   return (
     <div className="app-shell">
@@ -2511,13 +2635,19 @@ export default function App() {
               type="button"
               onClick={handleAddStandaloneNode}
               title="Add a new idea that starts disconnected"
+              disabled={isLocked}
             >
               Add idea
             </button>
-            <button type="button" onClick={handleAddChild} title="Enter">
+            <button type="button" onClick={handleAddChild} title="Enter" disabled={isLocked}>
               Add child
             </button>
-            <button type="button" onClick={handleAddAnnotation} title="Add a floating text box">
+            <button
+              type="button"
+              onClick={handleAddAnnotation}
+              title="Add a floating text box"
+              disabled={isLocked}
+            >
               Textbox
             </button>
             <button
@@ -2526,6 +2656,7 @@ export default function App() {
               title="Add a ring to group related ideas"
               aria-label="Add ring"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
@@ -2538,6 +2669,7 @@ export default function App() {
               title="Add an ellipse to spotlight a region"
               aria-label="Add ellipse"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
@@ -2550,6 +2682,7 @@ export default function App() {
               title="Add a rectangle to frame ideas"
               aria-label="Add rectangle"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <rect
@@ -2571,6 +2704,7 @@ export default function App() {
               title="Add an arrow to highlight a flow"
               aria-label="Add arrow"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
@@ -2583,6 +2717,7 @@ export default function App() {
               title="Add a straight line connector"
               aria-label="Add line"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <line
@@ -2613,10 +2748,11 @@ export default function App() {
                     value={textDraft}
                     onChange={handleTextChange}
                     placeholder={textEditorPlaceholder}
-                    disabled={!selectedTextTarget}
+                    disabled={isTextEditingDisabled}
                     aria-label={textInputAriaLabel}
                     className="mindmap-toolbar__text-input"
                     ref={textInputRef}
+                    title={isLocked ? 'Unlock edits to change text' : undefined}
                   />
                 </label>
                 <label className="mindmap-toolbar__text-control">
@@ -2624,9 +2760,10 @@ export default function App() {
                   <select
                     value={selectedTextSize}
                     onChange={handleTextSizeChange}
-                    disabled={!selectedTextTarget}
+                    disabled={isTextEditingDisabled}
                     aria-label={textSizeAriaLabel}
                     className="mindmap-toolbar__text-select"
+                    title={isLocked ? 'Unlock edits to change text size' : undefined}
                   >
                     {TEXT_SIZE_CHOICES.map((size) => (
                       <option key={size} value={size}>
@@ -2646,6 +2783,7 @@ export default function App() {
           onClick={handleImportJson}
           title="Load from JSON file"
           className="mindmap-toolbar__io-button"
+          disabled={isLocked}
         >
           Import
         </button>
@@ -2686,8 +2824,18 @@ export default function App() {
         <div className="mindmap-actions__row">
           <button
             type="button"
+            onClick={toggleLock}
+            aria-pressed={isLocked}
+            title={lockButtonTitle}
+          >
+            {lockButtonLabel}
+          </button>
+        </div>
+        <div className="mindmap-actions__row">
+          <button
+            type="button"
             onClick={handleDeleteSelection}
-            disabled={!canDelete}
+            disabled={isLocked || !canDelete}
             title="Delete or Backspace"
           >
             Delete
@@ -2695,20 +2843,25 @@ export default function App() {
           <button
             type="button"
             onClick={handleClearAll}
-            disabled={!canClear}
+            disabled={isLocked || !canClear}
             title="Reset the canvas to a fresh root node"
           >
             Clear
           </button>
         </div>
         <div className="mindmap-actions__row">
-          <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={isLocked || !canUndo}
+            title="Ctrl/Cmd + Z"
+          >
             Undo
           </button>
           <button
             type="button"
             onClick={handleRedo}
-            disabled={!canRedo}
+            disabled={isLocked || !canRedo}
             title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z"
           >
             Redo
