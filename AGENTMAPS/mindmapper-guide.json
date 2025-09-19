@@ -3,26 +3,35 @@
     {
       "id": "root",
       "parentId": null,
-      "text": "Mindmapper for AI Agents",
+      "text": "AGENTMAPS Workflow",
       "x": 0,
       "y": 0,
       "color": "#4f46e5",
       "textSize": "large"
     },
     {
-      "id": "understand",
+      "id": "prep",
       "parentId": "root",
-      "text": "Understand the tool",
-      "x": -280,
+      "text": "Prep & context",
+      "x": -320,
       "y": 160,
       "color": "#22d3ee",
       "textSize": "medium"
     },
     {
-      "id": "understand-read",
-      "parentId": "understand",
+      "id": "prep-read",
+      "parentId": "prep",
       "text": "Read both AGENTS files",
-      "x": -280,
+      "x": -320,
+      "y": 320,
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "prep-questions",
+      "parentId": "prep",
+      "text": "List open questions",
+      "x": -80,
       "y": 320,
       "color": "#38bdf8",
       "textSize": "small"
@@ -30,26 +39,35 @@
     {
       "id": "outline",
       "parentId": "root",
-      "text": "Outline the branches",
-      "x": 0,
-      "y": 180,
-      "color": "#fbbf24",
+      "text": "Outline branches",
+      "x": -80,
+      "y": 160,
+      "color": "#10b981",
       "textSize": "medium"
+    },
+    {
+      "id": "outline-root",
+      "parentId": "outline",
+      "text": "Choose one clear root",
+      "x": -160,
+      "y": 320,
+      "color": "#34d399",
+      "textSize": "small"
     },
     {
       "id": "outline-cluster",
       "parentId": "outline",
-      "text": "Group related points",
-      "x": 0,
-      "y": 340,
-      "color": "#facc15",
+      "text": "Cluster related ideas",
+      "x": 80,
+      "y": 320,
+      "color": "#34d399",
       "textSize": "small"
     },
     {
       "id": "build",
       "parentId": "root",
       "text": "Build JSON nodes",
-      "x": 280,
+      "x": 160,
       "y": 160,
       "color": "#f97316",
       "textSize": "medium"
@@ -57,8 +75,17 @@
     {
       "id": "build-fields",
       "parentId": "build",
-      "text": "Set id, parent, text, x, y",
-      "x": 280,
+      "text": "Set id, parentId, text, x, y",
+      "x": 160,
+      "y": 320,
+      "color": "#fb923c",
+      "textSize": "small"
+    },
+    {
+      "id": "build-style",
+      "parentId": "build",
+      "text": "Optional color & textSize",
+      "x": 400,
       "y": 320,
       "color": "#fb923c",
       "textSize": "small"
@@ -66,19 +93,55 @@
     {
       "id": "validate",
       "parentId": "root",
-      "text": "Validate & test",
-      "x": 560,
+      "text": "Validate & import",
+      "x": 400,
       "y": 160,
-      "color": "#10b981",
+      "color": "#0ea5e9",
       "textSize": "medium"
+    },
+    {
+      "id": "validate-import",
+      "parentId": "validate",
+      "text": "Drop JSON into importer",
+      "x": 400,
+      "y": 320,
+      "color": "#38bdf8",
+      "textSize": "small"
     },
     {
       "id": "validate-checks",
       "parentId": "validate",
-      "text": "Run lint + build",
-      "x": 560,
+      "text": "Run npm run lint & build",
+      "x": 640,
       "y": 320,
-      "color": "#34d399",
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "iterate",
+      "parentId": "root",
+      "text": "Iterate & report",
+      "x": 640,
+      "y": 160,
+      "color": "#ef4444",
+      "textSize": "medium"
+    },
+    {
+      "id": "iterate-feedback",
+      "parentId": "iterate",
+      "text": "Log feedback for humans",
+      "x": 880,
+      "y": 320,
+      "color": "#f87171",
+      "textSize": "small"
+    },
+    {
+      "id": "iterate-summary",
+      "parentId": "iterate",
+      "text": "Summarize changes in handoff",
+      "x": 1120,
+      "y": 320,
+      "color": "#f87171",
       "textSize": "small"
     }
   ],
