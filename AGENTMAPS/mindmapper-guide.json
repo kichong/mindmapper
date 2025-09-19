@@ -1,0 +1,87 @@
+{
+  "nodes": [
+    {
+      "id": "root",
+      "parentId": null,
+      "text": "Mindmapper for AI Agents",
+      "x": 0,
+      "y": 0,
+      "color": "#4f46e5",
+      "textSize": "large"
+    },
+    {
+      "id": "understand",
+      "parentId": "root",
+      "text": "Understand the tool",
+      "x": -280,
+      "y": 160,
+      "color": "#22d3ee",
+      "textSize": "medium"
+    },
+    {
+      "id": "understand-read",
+      "parentId": "understand",
+      "text": "Read both AGENTS files",
+      "x": -280,
+      "y": 320,
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "outline",
+      "parentId": "root",
+      "text": "Outline the branches",
+      "x": 0,
+      "y": 180,
+      "color": "#fbbf24",
+      "textSize": "medium"
+    },
+    {
+      "id": "outline-cluster",
+      "parentId": "outline",
+      "text": "Group related points",
+      "x": 0,
+      "y": 340,
+      "color": "#facc15",
+      "textSize": "small"
+    },
+    {
+      "id": "build",
+      "parentId": "root",
+      "text": "Build JSON nodes",
+      "x": 280,
+      "y": 160,
+      "color": "#f97316",
+      "textSize": "medium"
+    },
+    {
+      "id": "build-fields",
+      "parentId": "build",
+      "text": "Set id, parent, text, x, y",
+      "x": 280,
+      "y": 320,
+      "color": "#fb923c",
+      "textSize": "small"
+    },
+    {
+      "id": "validate",
+      "parentId": "root",
+      "text": "Validate & test",
+      "x": 560,
+      "y": 160,
+      "color": "#10b981",
+      "textSize": "medium"
+    },
+    {
+      "id": "validate-checks",
+      "parentId": "validate",
+      "text": "Run lint + build",
+      "x": 560,
+      "y": 320,
+      "color": "#34d399",
+      "textSize": "small"
+    }
+  ],
+  "annotations": [],
+  "shapes": []
+}
