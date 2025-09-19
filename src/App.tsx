@@ -437,6 +437,7 @@ export default function App() {
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
+  const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {
     if (!isLocked) {
@@ -457,6 +458,17 @@ export default function App() {
 
     pendingTextFocusRef.current = false
   }, [isLocked])
+
+  useEffect(() => {
+    // Keep the rest of the page in step with the canvas background choice
+    const darkColor = '#0f172a'
+    const lightColor = '#f8fafc'
+    document.body.style.backgroundColor = backgroundTheme === 'dark' ? darkColor : lightColor
+
+    return () => {
+      document.body.style.backgroundColor = darkColor
+    }
+  }, [backgroundTheme])
 
   const getNodeRadius = useCallback(
     (node: MindMapNode) => {
@@ -541,6 +553,10 @@ export default function App() {
 
   const toggleLock = useCallback(() => {
     setIsLocked((previous) => !previous)
+  }, [])
+
+  const toggleBackgroundTheme = useCallback(() => {
+    setBackgroundTheme((previous) => (previous === 'dark' ? 'light' : 'dark'))
   }, [])
 
   const drawScene = useCallback(() => {
@@ -2584,6 +2600,7 @@ export default function App() {
 
   const toolbarBodyId = 'mindmap-toolbar-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
+  const appShellClassName = `app-shell app-shell--${backgroundTheme}`
   const isEditingNode = selectedTextTarget?.kind === 'node'
   const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
   const textEditorLabel = isEditingNode ? 'Node text' : isEditingAnnotation ? 'Text box text' : 'Edit text'
@@ -2613,9 +2630,14 @@ export default function App() {
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
     : 'Lock editing so you can explore safely'
+  const isDarkBackground = backgroundTheme === 'dark'
+  const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
+  const backgroundButtonTitle = isDarkBackground
+    ? 'Switch to a bright background'
+    : 'Switch to a deep background'
 
   return (
-    <div className="app-shell">
+    <div className={appShellClassName}>
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className={toolbarClassName}>
         <div className="mindmap-toolbar__header">
@@ -2829,6 +2851,15 @@ export default function App() {
             title={lockButtonTitle}
           >
             {lockButtonLabel}
+          </button>
+          <button
+            type="button"
+            onClick={toggleBackgroundTheme}
+            aria-pressed={isDarkBackground}
+            aria-label={backgroundButtonTitle}
+            title={backgroundButtonTitle}
+          >
+            {backgroundButtonLabel}
           </button>
         </div>
         <div className="mindmap-actions__row">
