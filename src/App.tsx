@@ -799,8 +799,15 @@ export default function App() {
       context.restore()
     })
 
-    context.lineWidth = 2
-    context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
+    const connectionStrokeStyle =
+      backgroundTheme === 'dark' ? 'rgba(226, 232, 240, 0.8)' : 'rgba(15, 23, 42, 0.7)'
+    const connectionLineWidth = 3
+    const connectionHighlightWidth = Math.max(connectionLineWidth + 1.5, 4)
+
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.lineWidth = connectionLineWidth
+    context.strokeStyle = connectionStrokeStyle
 
     nodesToDraw.forEach((node) => {
       if (!node.parentId) {
@@ -829,11 +836,11 @@ export default function App() {
       context.fill()
 
       if (node.id === selectedId) {
-        context.lineWidth = 4
+        context.lineWidth = connectionHighlightWidth
         context.strokeStyle = '#f97316'
         context.stroke()
-        context.lineWidth = 2
-        context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
+        context.lineWidth = connectionLineWidth
+        context.strokeStyle = connectionStrokeStyle
       }
 
       context.fillStyle = '#ffffff'
@@ -880,7 +887,7 @@ export default function App() {
     })
 
     context.restore()
-  }, [getNodeRadius, measureAnnotation])
+  }, [backgroundTheme, getNodeRadius, measureAnnotation])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -2663,8 +2670,10 @@ export default function App() {
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
     : 'Lock editing so you can explore safely'
+  const lockButtonIcon = isLocked ? '🔒' : '🔓'
   const isDarkBackground = backgroundTheme === 'dark'
   const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
+  const backgroundButtonIcon = isDarkBackground ? '🌙' : '☀️'
   const backgroundButtonTitle = isDarkBackground
     ? 'Switch to a bright background'
     : 'Switch to a deep background'
@@ -2791,9 +2800,6 @@ export default function App() {
         </div>
         {!isToolbarCollapsed ? (
           <div className="mindmap-toolbar__body" id={toolbarBodyId}>
-            <div className="mindmap-toolbar__shape-panel">
-              <span className="mindmap-toolbar__section-title">Shapes</span>
-            </div>
             <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
               <div className="mindmap-toolbar__text-editor">
                 <label className="mindmap-toolbar__text-control">
@@ -2883,7 +2889,8 @@ export default function App() {
             aria-pressed={isLocked}
             title={lockButtonTitle}
           >
-            {lockButtonLabel}
+            <span aria-hidden="true" className="mindmap-actions__icon">{lockButtonIcon}</span>
+            <span className="visually-hidden">{lockButtonLabel}</span>
           </button>
           <button
             type="button"
@@ -2892,7 +2899,8 @@ export default function App() {
             aria-label={backgroundButtonTitle}
             title={backgroundButtonTitle}
           >
-            {backgroundButtonLabel}
+            <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
+            <span className="visually-hidden">{backgroundButtonLabel}</span>
           </button>
         </div>
         <div className="mindmap-actions__row">

@@ -150,20 +150,6 @@
   gap: 0.65rem;
 }
 
-.mindmap-toolbar__shape-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.mindmap-toolbar__section-title {
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #e2e8f0;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -423,6 +409,10 @@
   padding: 0.5rem 1rem;
   border-radius: 0.85rem;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   font-size: 0.95rem;
   font-weight: 600;
   background: rgba(237, 233, 254, 0.92);
@@ -447,4 +437,9 @@
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+.mindmap-actions__icon {
+  font-size: 1.2rem;
+  line-height: 1;
 }
