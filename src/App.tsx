@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
+  ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
   normalizeTextSize,
   type MindMapAnnotation,
@@ -12,6 +13,7 @@ import {
   type TextSize,
   useMindMap,
 } from './state/MindMapContext'
+import { convertDataUrlToBytes, createPdfBytesFromJpeg } from './utils/pdf'
 import './App.css'
 
 const NODE_BASE_RADIUS = 40
@@ -435,6 +437,39 @@ export default function App() {
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    if (!isLocked) {
+      return
+    }
+
+    const interaction = interactionRef.current
+    interactionRef.current = null
+
+    const canvas = canvasRef.current
+    if (canvas && interaction && canvas.hasPointerCapture(interaction.pointerId)) {
+      canvas.releasePointerCapture(interaction.pointerId)
+    }
+
+    if (canvas) {
+      canvas.style.cursor = 'grab'
+    }
+
+    pendingTextFocusRef.current = false
+  }, [isLocked])
+
+  useEffect(() => {
+    // Keep the rest of the page in step with the canvas background choice
+    const darkColor = '#0f172a'
+    const lightColor = '#f8fafc'
+    document.body.style.backgroundColor = backgroundTheme === 'dark' ? darkColor : lightColor
+
+    return () => {
+      document.body.style.backgroundColor = darkColor
+    }
+  }, [backgroundTheme])
 
   const getNodeRadius = useCallback(
     (node: MindMapNode) => {
@@ -515,6 +550,14 @@ export default function App() {
 
   const toggleToolbarCollapsed = useCallback(() => {
     setToolbarCollapsed((previous) => !previous)
+  }, [])
+
+  const toggleLock = useCallback(() => {
+    setIsLocked((previous) => !previous)
+  }, [])
+
+  const toggleBackgroundTheme = useCallback(() => {
+    setBackgroundTheme((previous) => (previous === 'dark' ? 'light' : 'dark'))
   }, [])
 
   const drawScene = useCallback(() => {
@@ -756,8 +799,15 @@ export default function App() {
       context.restore()
     })
 
-    context.lineWidth = 2
-    context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
+    const connectionStrokeStyle =
+      backgroundTheme === 'dark' ? 'rgba(226, 232, 240, 0.8)' : 'rgba(15, 23, 42, 0.7)'
+    const connectionLineWidth = 3
+    const connectionHighlightWidth = Math.max(connectionLineWidth + 1.5, 4)
+
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.lineWidth = connectionLineWidth
+    context.strokeStyle = connectionStrokeStyle
 
     nodesToDraw.forEach((node) => {
       if (!node.parentId) {
@@ -786,11 +836,11 @@ export default function App() {
       context.fill()
 
       if (node.id === selectedId) {
-        context.lineWidth = 4
+        context.lineWidth = connectionHighlightWidth
         context.strokeStyle = '#f97316'
         context.stroke()
-        context.lineWidth = 2
-        context.strokeStyle = 'rgba(148, 163, 184, 0.5)'
+        context.lineWidth = connectionLineWidth
+        context.strokeStyle = connectionStrokeStyle
       }
 
       context.fillStyle = '#ffffff'
@@ -837,7 +887,7 @@ export default function App() {
     })
 
     context.restore()
-  }, [getNodeRadius, measureAnnotation])
+  }, [backgroundTheme, getNodeRadius, measureAnnotation])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -1117,15 +1167,21 @@ export default function App() {
         })
 
       if (hitResizeShape) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'shape-resize',
           pointerId: event.pointerId,
           shapeId: hitResizeShape.id,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1137,6 +1193,15 @@ export default function App() {
         .find((node) => Math.hypot(scenePoint.x - node.x, scenePoint.y - node.y) <= getNodeRadius(node))
 
       if (hitNode) {
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'node',
           pointerId: event.pointerId,
@@ -1145,9 +1210,6 @@ export default function App() {
           offsetY: scenePoint.y - hitNode.y,
         }
 
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1174,6 +1236,15 @@ export default function App() {
         })
 
       if (hitAnnotation) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'annotation',
           pointerId: event.pointerId,
@@ -1182,9 +1253,6 @@ export default function App() {
           offsetY: scenePoint.y - hitAnnotation.y,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1296,6 +1364,15 @@ export default function App() {
         })
 
       if (hitShape) {
+        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
+        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
+
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'shape-move',
           pointerId: event.pointerId,
@@ -1304,9 +1381,6 @@ export default function App() {
           offsetY: scenePoint.y - hitShape.y,
         }
 
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
-        dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
         canvas.setPointerCapture(event.pointerId)
         canvas.style.cursor = 'grabbing'
         event.preventDefault()
@@ -1333,6 +1407,10 @@ export default function App() {
     const handlePointerMove = (event: PointerEvent) => {
       const interaction = interactionRef.current
       if (!interaction) {
+        return
+      }
+
+      if (isLocked && interaction.mode !== 'pan') {
         return
       }
 
@@ -1599,6 +1677,10 @@ export default function App() {
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
         setTextDraft(hitNode.text)
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
         requestToolbarForEditing()
         event.preventDefault()
         return
@@ -1628,6 +1710,10 @@ export default function App() {
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setTextDraft(hitAnnotation.text)
+        if (isLocked) {
+          event.preventDefault()
+          return
+        }
         requestToolbarForEditing()
         event.preventDefault()
       }
@@ -1654,6 +1740,7 @@ export default function App() {
     adjustZoom,
     dispatch,
     focusInput,
+    isLocked,
     getNodeRadius,
     isToolbarCollapsed,
     measureAnnotation,
@@ -1662,6 +1749,10 @@ export default function App() {
   ])
 
   const handleAddChild = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     if (nodes.length === 0) {
       return
     }
@@ -1698,9 +1789,45 @@ export default function App() {
         textSize: 'medium',
       },
     })
-  }, [dispatch, nodes, selectedNode])
+  }, [dispatch, isLocked, nodes, selectedNode])
+
+  const handleAddStandaloneNode = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
+    const { scale, offsetX, offsetY } = viewRef.current
+    const { width, height } = sizeRef.current
+
+    const worldCenterX = width === 0 ? 0 : -offsetX / scale
+    const worldCenterY = height === 0 ? 0 : -offsetY / scale
+    const paletteIndex = nodes.length % FALLBACK_COLORS.length
+    const nodeColor = FALLBACK_COLORS[paletteIndex]
+
+    const newNodeId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    dispatch({
+      type: 'ADD_NODE',
+      node: {
+        id: newNodeId,
+        parentId: null,
+        text: 'New Idea',
+        x: worldCenterX,
+        y: worldCenterY,
+        color: nodeColor,
+        textSize: 'medium',
+      },
+    })
+  }, [dispatch, isLocked, nodes])
 
   const handleAddAnnotation = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1722,9 +1849,13 @@ export default function App() {
         textSize: 'medium',
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddRing = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1748,9 +1879,13 @@ export default function App() {
         color: RING_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddEllipse = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1775,9 +1910,13 @@ export default function App() {
         color: ELLIPSE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddRectangle = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1802,9 +1941,13 @@ export default function App() {
         color: RECTANGLE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddArrow = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1830,9 +1973,13 @@ export default function App() {
         color: ARROW_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleAddLine = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     const { scale, offsetX, offsetY } = viewRef.current
     const { width, height } = sizeRef.current
 
@@ -1857,9 +2004,13 @@ export default function App() {
         color: LINE_DEFAULT_COLOR,
       },
     })
-  }, [dispatch])
+  }, [dispatch, isLocked])
 
   const handleDeleteSelection = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     if (selectedShape) {
       dispatch({ type: 'DELETE_SHAPE', shapeId: selectedShape.id })
       return
@@ -1874,26 +2025,26 @@ export default function App() {
       return
     }
 
-    if (selectedNode.parentId === null) {
+    if (selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID) {
       return
     }
 
     dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
+  }, [dispatch, isLocked, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
 
   const handleUndo = useCallback(() => {
-    if (past.length === 0) {
+    if (isLocked || past.length === 0) {
       return
     }
     dispatch({ type: 'UNDO' })
-  }, [dispatch, past])
+  }, [dispatch, isLocked, past])
 
   const handleRedo = useCallback(() => {
-    if (future.length === 0) {
+    if (isLocked || future.length === 0) {
       return
     }
     dispatch({ type: 'REDO' })
-  }, [dispatch, future])
+  }, [dispatch, future, isLocked])
 
   const isPristineState = useMemo(() => {
     if (annotations.length > 0) {
@@ -1914,7 +2065,7 @@ export default function App() {
     }
 
     return (
-      rootNode.id === 'root' &&
+      rootNode.id === ROOT_NODE_ID &&
       rootNode.parentId === null &&
       rootNode.text === 'Root' &&
       rootNode.x === 0 &&
@@ -1926,12 +2077,12 @@ export default function App() {
   const canClear = !isPristineState
 
   const handleClearAll = useCallback(() => {
-    if (!canClear) {
+    if (isLocked || !canClear) {
       return
     }
 
     dispatch({ type: 'CLEAR_ALL' })
-  }, [canClear, dispatch])
+  }, [canClear, dispatch, isLocked])
 
   const panByPixels = useCallback((deltaX: number, deltaY: number) => {
     setViewTransform((previous) => {
@@ -2093,6 +2244,38 @@ export default function App() {
       anchor.click()
       URL.revokeObjectURL(url)
     })
+  }, [closeExportMenu])
+
+  const handleExportPdf = useCallback(() => {
+    closeExportMenu()
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const { width, height } = canvas
+    const exportCanvas = document.createElement('canvas')
+    exportCanvas.width = width
+    exportCanvas.height = height
+    const context = exportCanvas.getContext('2d')
+    if (!context) {
+      return
+    }
+
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, width, height)
+    context.drawImage(canvas, 0, 0)
+
+    const imageDataUrl = exportCanvas.toDataURL('image/jpeg', 0.92)
+    const imageBytes = convertDataUrlToBytes(imageDataUrl)
+    const pdfBytes = createPdfBytesFromJpeg(imageBytes, width, height)
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'mindmap.pdf'
+    anchor.click()
+    URL.revokeObjectURL(url)
   }, [closeExportMenu])
 
   const sanitizeImportedNodes = useCallback((value: unknown) => {
@@ -2331,6 +2514,11 @@ export default function App() {
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
+      if (isLocked) {
+        event.target.value = ''
+        return
+      }
+
       const file = event.target.files?.[0]
       if (!file) {
         return
@@ -2367,15 +2555,27 @@ export default function App() {
       reader.readAsText(file)
       event.target.value = ''
     },
-    [dispatch, sanitizeImportedAnnotations, sanitizeImportedNodes, sanitizeImportedShapes],
+    [
+      dispatch,
+      isLocked,
+      sanitizeImportedAnnotations,
+      sanitizeImportedNodes,
+      sanitizeImportedShapes,
+    ],
   )
 
   const handleImportJson = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
     closeExportMenu()
     fileInputRef.current?.click()
-  }, [closeExportMenu])
+  }, [closeExportMenu, isLocked])
 
-  const canDeleteNode = Boolean(selectedNode && selectedNode.parentId !== null)
+  const canDeleteNode = Boolean(
+    selectedNode && !(selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID),
+  )
   const canDeleteAnnotation = Boolean(selectedAnnotation)
   const canDeleteShape = Boolean(selectedShape)
   const canDelete = canDeleteNode || canDeleteAnnotation || canDeleteShape
@@ -2390,7 +2590,7 @@ export default function App() {
       const value = event.target.value
       setTextDraft(value)
 
-      if (!selectedTextTarget) {
+      if (isLocked || !selectedTextTarget) {
         return
       }
 
@@ -2409,12 +2609,12 @@ export default function App() {
         updates: { text: value },
       })
     },
-    [dispatch, selectedTextTarget],
+    [dispatch, isLocked, selectedTextTarget],
   )
 
   const handleTextSizeChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
-      if (!selectedTextTarget) {
+      if (isLocked || !selectedTextTarget) {
         return
       }
 
@@ -2435,32 +2635,51 @@ export default function App() {
         updates: { textSize: nextSize },
       })
     },
-    [dispatch, selectedTextTarget],
+    [dispatch, isLocked, selectedTextTarget],
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
+  const appShellClassName = `app-shell app-shell--${backgroundTheme}`
   const isEditingNode = selectedTextTarget?.kind === 'node'
   const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
   const textEditorLabel = isEditingNode ? 'Node text' : isEditingAnnotation ? 'Text box text' : 'Edit text'
-  const textEditorPlaceholder = isEditingNode
+  const isTextEditingDisabled = isLocked || !selectedTextTarget
+  const textEditorPlaceholder = isLocked
+    ? 'Unlock editing to type'
+    : isEditingNode
     ? 'Type here to rename the node'
     : isEditingAnnotation
     ? 'Type here to update the text box'
     : 'Select a node or text box first'
-  const textInputAriaLabel = isEditingNode
+  const textInputAriaLabel = isLocked
+    ? 'Text editing is locked'
+    : isEditingNode
     ? 'Selected node text'
     : isEditingAnnotation
     ? 'Selected text box text'
     : 'Edit text'
-  const textSizeAriaLabel = isEditingNode
+  const textSizeAriaLabel = isLocked
+    ? 'Text size selection is locked'
+    : isEditingNode
     ? 'Selected node text size'
     : isEditingAnnotation
     ? 'Selected text box size'
     : 'Text size'
+  const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
+  const lockButtonTitle = isLocked
+    ? 'Switch back to editing mode'
+    : 'Lock editing so you can explore safely'
+  const lockButtonIcon = isLocked ? '🔒' : '🔓'
+  const isDarkBackground = backgroundTheme === 'dark'
+  const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
+  const backgroundButtonIcon = isDarkBackground ? '🌙' : '☀️'
+  const backgroundButtonTitle = isDarkBackground
+    ? 'Switch to a bright background'
+    : 'Switch to a deep background'
 
   return (
-    <div className="app-shell">
+    <div className={appShellClassName}>
       <canvas ref={canvasRef} className="mindmap-canvas" />
       <div className={toolbarClassName}>
         <div className="mindmap-toolbar__header">
@@ -2476,10 +2695,23 @@ export default function App() {
             {isToolbarCollapsed ? '▾' : '▴'}
           </button>
           <div className="mindmap-toolbar__header-actions">
-            <button type="button" onClick={handleAddChild} title="Enter">
+            <button
+              type="button"
+              onClick={handleAddStandaloneNode}
+              title="Add a new idea that starts disconnected"
+              disabled={isLocked}
+            >
+              Add idea
+            </button>
+            <button type="button" onClick={handleAddChild} title="Enter" disabled={isLocked}>
               Add child
             </button>
-            <button type="button" onClick={handleAddAnnotation} title="Add a floating text box">
+            <button
+              type="button"
+              onClick={handleAddAnnotation}
+              title="Add a floating text box"
+              disabled={isLocked}
+            >
               Textbox
             </button>
             <button
@@ -2488,6 +2720,7 @@ export default function App() {
               title="Add a ring to group related ideas"
               aria-label="Add ring"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
@@ -2500,6 +2733,7 @@ export default function App() {
               title="Add an ellipse to spotlight a region"
               aria-label="Add ellipse"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
@@ -2512,6 +2746,7 @@ export default function App() {
               title="Add a rectangle to frame ideas"
               aria-label="Add rectangle"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <rect
@@ -2533,6 +2768,7 @@ export default function App() {
               title="Add an arrow to highlight a flow"
               aria-label="Add arrow"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
@@ -2545,6 +2781,7 @@ export default function App() {
               title="Add a straight line connector"
               aria-label="Add line"
               className="mindmap-toolbar__icon-button"
+              disabled={isLocked}
             >
               <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
                 <line
@@ -2563,9 +2800,6 @@ export default function App() {
         </div>
         {!isToolbarCollapsed ? (
           <div className="mindmap-toolbar__body" id={toolbarBodyId}>
-            <div className="mindmap-toolbar__shape-panel">
-              <span className="mindmap-toolbar__section-title">Shapes</span>
-            </div>
             <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
               <div className="mindmap-toolbar__text-editor">
                 <label className="mindmap-toolbar__text-control">
@@ -2575,10 +2809,11 @@ export default function App() {
                     value={textDraft}
                     onChange={handleTextChange}
                     placeholder={textEditorPlaceholder}
-                    disabled={!selectedTextTarget}
+                    disabled={isTextEditingDisabled}
                     aria-label={textInputAriaLabel}
                     className="mindmap-toolbar__text-input"
                     ref={textInputRef}
+                    title={isLocked ? 'Unlock edits to change text' : undefined}
                   />
                 </label>
                 <label className="mindmap-toolbar__text-control">
@@ -2586,9 +2821,10 @@ export default function App() {
                   <select
                     value={selectedTextSize}
                     onChange={handleTextSizeChange}
-                    disabled={!selectedTextTarget}
+                    disabled={isTextEditingDisabled}
                     aria-label={textSizeAriaLabel}
                     className="mindmap-toolbar__text-select"
+                    title={isLocked ? 'Unlock edits to change text size' : undefined}
                   >
                     {TEXT_SIZE_CHOICES.map((size) => (
                       <option key={size} value={size}>
@@ -2608,6 +2844,7 @@ export default function App() {
           onClick={handleImportJson}
           title="Load from JSON file"
           className="mindmap-toolbar__io-button"
+          disabled={isLocked}
         >
           Import
         </button>
@@ -2630,8 +2867,8 @@ export default function App() {
               <button type="button" onClick={handleExportPng} role="menuitem">
                 Export PNG
               </button>
-              <button type="button" disabled role="menuitem" title="PDF export is coming soon">
-                Export PDF (coming soon)
+              <button type="button" onClick={handleExportPdf} role="menuitem">
+                Export PDF
               </button>
             </div>
           ) : null}
@@ -2648,8 +2885,29 @@ export default function App() {
         <div className="mindmap-actions__row">
           <button
             type="button"
+            onClick={toggleLock}
+            aria-pressed={isLocked}
+            title={lockButtonTitle}
+          >
+            <span aria-hidden="true" className="mindmap-actions__icon">{lockButtonIcon}</span>
+            <span className="visually-hidden">{lockButtonLabel}</span>
+          </button>
+          <button
+            type="button"
+            onClick={toggleBackgroundTheme}
+            aria-pressed={isDarkBackground}
+            aria-label={backgroundButtonTitle}
+            title={backgroundButtonTitle}
+          >
+            <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
+            <span className="visually-hidden">{backgroundButtonLabel}</span>
+          </button>
+        </div>
+        <div className="mindmap-actions__row">
+          <button
+            type="button"
             onClick={handleDeleteSelection}
-            disabled={!canDelete}
+            disabled={isLocked || !canDelete}
             title="Delete or Backspace"
           >
             Delete
@@ -2657,20 +2915,25 @@ export default function App() {
           <button
             type="button"
             onClick={handleClearAll}
-            disabled={!canClear}
+            disabled={isLocked || !canClear}
             title="Reset the canvas to a fresh root node"
           >
             Clear
           </button>
         </div>
         <div className="mindmap-actions__row">
-          <button type="button" onClick={handleUndo} disabled={!canUndo} title="Ctrl/Cmd + Z">
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={isLocked || !canUndo}
+            title="Ctrl/Cmd + Z"
+          >
             Undo
           </button>
           <button
             type="button"
             onClick={handleRedo}
-            disabled={!canRedo}
+            disabled={isLocked || !canRedo}
             title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z"
           >
             Redo
