@@ -26,6 +26,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 ## Features to keep in mind
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
+- Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.
 - The top toolbar collapses. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
 - The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.
 - Double-clicking any node or floating text box should pop the toolbar open and move focus to the shared text editor so users can type immediately.
