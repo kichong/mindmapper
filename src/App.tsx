@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
+  DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
   normalizeTextSize,
@@ -31,7 +32,16 @@ const NODE_LINE_HEIGHTS: Record<TextSize, number> = {
 const NODE_WRAP_STEP = 24
 const NODE_RADIUS_EPSILON = 0.5
 const LINK_DISTANCE = 160
-const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
+type NodeColorOption = { value: string; label: string }
+const NODE_COLOR_OPTIONS: readonly NodeColorOption[] = [
+  { value: DEFAULT_NODE_COLOR, label: 'Indigo' },
+  { value: '#22d3ee', label: 'Teal' },
+  { value: '#a855f7', label: 'Purple' },
+  { value: '#10b981', label: 'Green' },
+  { value: '#f97316', label: 'Orange' },
+  { value: '#facc15', label: 'Yellow' },
+]
+const FALLBACK_COLORS = NODE_COLOR_OPTIONS.map((option) => option.value)
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
@@ -548,6 +558,8 @@ export default function App() {
     [shapes, selectedShapeId],
   )
 
+  const selectedNodeColor = selectedNode?.color ?? DEFAULT_NODE_COLOR
+
   const selectedTextTarget = useMemo(() => {
     if (selectedNode) {
       return {
@@ -1008,7 +1020,7 @@ export default function App() {
       const layout = measureNodeLabel(node)
       const radius = layout.radius
 
-      context.fillStyle = node.color || '#4f46e5'
+      context.fillStyle = node.color || DEFAULT_NODE_COLOR
       context.beginPath()
       context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
       context.fill()
@@ -1947,7 +1959,7 @@ export default function App() {
     const nextX = parent.x + Math.cos(angle) * distance
     const nextY = parent.y + Math.sin(angle) * distance
     const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex]
+    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -1984,7 +1996,7 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
     const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex]
+    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -2257,7 +2269,7 @@ export default function App() {
       rootNode.text === 'Root' &&
       rootNode.x === 0 &&
       rootNode.y === 0 &&
-      rootNode.color === '#4f46e5'
+      rootNode.color === DEFAULT_NODE_COLOR
     )
   }, [annotations, nodes, shapes])
 
@@ -2486,7 +2498,7 @@ export default function App() {
       })
       .map((node) => ({
         ...node,
-        color: typeof node.color === 'string' ? node.color : '#4f46e5',
+        color: typeof node.color === 'string' ? node.color : DEFAULT_NODE_COLOR,
         textSize: normalizeTextSize((node as { textSize?: unknown }).textSize),
       }))
 
@@ -2825,6 +2837,25 @@ export default function App() {
     [dispatch, isLocked, selectedTextTarget],
   )
 
+  const handleNodeColorChange = useCallback(
+    (nextColor: string) => {
+      if (isLocked || !selectedNode) {
+        return
+      }
+
+      if (selectedNode.color === nextColor) {
+        return
+      }
+
+      dispatch({
+        type: 'UPDATE_NODE',
+        nodeId: selectedNode.id,
+        updates: { color: nextColor },
+      })
+    },
+    [dispatch, isLocked, selectedNode],
+  )
+
   const toolbarBodyId = 'mindmap-toolbar-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
   const appShellClassName = `app-shell app-shell--${backgroundTheme}`
@@ -2853,6 +2884,7 @@ export default function App() {
     : isEditingAnnotation
     ? 'Selected text box size'
     : 'Text size'
+  const isNodeColorDisabled = isLocked || !selectedNode
   const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
@@ -3020,6 +3052,40 @@ export default function App() {
                     ))}
                   </select>
                 </label>
+                {isEditingNode ? (
+                  <div className="mindmap-toolbar__text-control mindmap-toolbar__color-control">
+                    <span className="mindmap-toolbar__text-label">Node color</span>
+                    <div className="mindmap-toolbar__color-options" role="group" aria-label="Node color">
+                      {NODE_COLOR_OPTIONS.map((option) => {
+                        const isSelectedColor = selectedNodeColor === option.value
+                        const swatchClassName = `mindmap-toolbar__color-swatch${
+                          isSelectedColor ? ' mindmap-toolbar__color-swatch--selected' : ''
+                        }`
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={swatchClassName}
+                            style={{ backgroundColor: option.value }}
+                            onClick={() => handleNodeColorChange(option.value)}
+                            aria-pressed={isSelectedColor}
+                            aria-label={`Set node color to ${option.label}`}
+                            title={
+                              isNodeColorDisabled
+                                ? 'Unlock edits to change color'
+                                : `Set node color to ${option.label}`
+                            }
+                            disabled={isNodeColorDisabled}
+                          >
+                            <span className="visually-hidden">
+                              {isSelectedColor ? `${option.label} selected` : `Use ${option.label}`}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
