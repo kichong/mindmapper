@@ -19,6 +19,8 @@ export function normalizeTextSize(value: unknown): TextSize {
 }
 
 
+export const DEFAULT_NODE_COLOR = '#4f46e5'
+
 export interface MindMapNode {
   id: string
   parentId: string | null
@@ -171,7 +173,7 @@ const initialState: MindMapState = {
       text: 'Root',
       x: 0,
       y: 0,
-      color: '#4f46e5',
+      color: DEFAULT_NODE_COLOR,
       textSize: 'medium',
     },
   ],
@@ -582,7 +584,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         state.nodes[0]?.text !== 'Root' ||
         state.nodes[0]?.x !== 0 ||
         state.nodes[0]?.y !== 0 ||
-        state.nodes[0]?.color !== '#4f46e5' ||
+        state.nodes[0]?.color !== DEFAULT_NODE_COLOR ||
         state.nodes[0]?.textSize !== 'medium'
 
       const hasShapes = state.shapes.length > 0
@@ -597,7 +599,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         text: 'Root',
         x: 0,
         y: 0,
-        color: '#4f46e5',
+        color: DEFAULT_NODE_COLOR,
         textSize: 'medium',
       }
 

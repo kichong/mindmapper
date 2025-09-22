@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
+  DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
   normalizeTextSize,
@@ -23,8 +24,24 @@ const NODE_FONT_SIZES: Record<TextSize, number> = {
   medium: 20,
   large: 30,
 }
+const NODE_LINE_HEIGHTS: Record<TextSize, number> = {
+  small: 18,
+  medium: 30,
+  large: 45,
+}
+const NODE_WRAP_STEP = 24
+const NODE_RADIUS_EPSILON = 0.5
 const LINK_DISTANCE = 160
-const FALLBACK_COLORS = ['#22d3ee', '#a855f7', '#10b981', '#f97316', '#facc15']
+type NodeColorOption = { value: string; label: string }
+const NODE_COLOR_OPTIONS: readonly NodeColorOption[] = [
+  { value: DEFAULT_NODE_COLOR, label: 'Indigo' },
+  { value: '#22d3ee', label: 'Teal' },
+  { value: '#a855f7', label: 'Purple' },
+  { value: '#10b981', label: 'Green' },
+  { value: '#f97316', label: 'Orange' },
+  { value: '#facc15', label: 'Yellow' },
+]
+const FALLBACK_COLORS = NODE_COLOR_OPTIONS.map((option) => option.value)
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
@@ -256,8 +273,138 @@ const NODE_FONT_FAMILY = 'Inter, system-ui, sans-serif'
 const ANNOTATION_FONT_FAMILY = 'Inter, system-ui, sans-serif'
 
 const getNodeFont = (size: TextSize) => `${NODE_FONT_SIZES[size]}px ${NODE_FONT_FAMILY}`
+const getNodeLineHeight = (size: TextSize) => NODE_LINE_HEIGHTS[size]
 const getAnnotationFont = (size: TextSize) => `${ANNOTATION_FONT_SIZES[size]}px ${ANNOTATION_FONT_FAMILY}`
 const getAnnotationLineHeight = (size: TextSize) => ANNOTATION_LINE_HEIGHTS[size]
+
+const calculateNodeRadius = (contentWidth: number, contentHeight: number) => {
+  const paddedWidth = contentWidth + NODE_TEXT_PADDING * 2
+  const paddedHeight = contentHeight + NODE_TEXT_PADDING * 2
+  const diagonal = Math.sqrt(paddedWidth * paddedWidth + paddedHeight * paddedHeight)
+  return Math.max(NODE_BASE_RADIUS, diagonal / 2)
+}
+
+const calculateNodeLabelLayout = (
+  context: CanvasRenderingContext2D,
+  rawLabel: string,
+  textSize: TextSize,
+): NodeLabelLayout => {
+  const label = rawLabel.trim().length > 0 ? rawLabel : 'New Idea'
+  const lineHeight = getNodeLineHeight(textSize)
+  const words = label.split(/\s+/).filter((word) => word.length > 0)
+
+  if (words.length === 0) {
+    words.push(label)
+  }
+
+  const spaceWidth = context.measureText(' ').width
+  const wordWidths = words.map((word) => context.measureText(word).width)
+  const prefixWidths = new Array<number>(wordWidths.length + 1)
+  prefixWidths[0] = 0
+
+  for (let index = 0; index < wordWidths.length; index += 1) {
+    prefixWidths[index + 1] = prefixWidths[index] + wordWidths[index]
+  }
+
+  const computeLineWidth = (start: number, end: number) =>
+    prefixWidths[end + 1] - prefixWidths[start] + spaceWidth * (end - start)
+
+  const singleLineWidth = context.measureText(label).width
+  let maxWordWidth = wordWidths.reduce((max, width) => Math.max(max, width), 0)
+
+  if (!Number.isFinite(maxWordWidth)) {
+    maxWordWidth = singleLineWidth
+  }
+
+  const minWidth = Math.max(maxWordWidth, 1)
+  const maxWidth = Math.max(singleLineWidth, minWidth)
+  const candidateWidths = new Set<number>([maxWidth, minWidth])
+
+  if (maxWidth > minWidth) {
+    for (let width = maxWidth - NODE_WRAP_STEP; width > minWidth; width -= NODE_WRAP_STEP) {
+      candidateWidths.add(width)
+    }
+  }
+
+  for (let start = 0; start < words.length; start += 1) {
+    for (let end = start; end < words.length; end += 1) {
+      const width = computeLineWidth(start, end)
+      if (width >= minWidth && width <= maxWidth) {
+        candidateWidths.add(width)
+      }
+    }
+  }
+
+  const wrapWithWidth = (limit: number) => {
+    const segments: Array<{ start: number; end: number; width: number }> = []
+    let start = 0
+
+    while (start < words.length) {
+      let end = start
+      let width = computeLineWidth(start, end)
+
+      while (end + 1 < words.length) {
+        const nextWidth = computeLineWidth(start, end + 1)
+        if (nextWidth > limit && (width <= limit || end === start)) {
+          break
+        }
+
+        if (nextWidth > limit && width > limit) {
+          break
+        }
+
+        end += 1
+        width = nextWidth
+      }
+
+      segments.push({ start, end, width })
+      start = end + 1
+    }
+
+    const lines = segments.map(({ start: lineStart, end: lineEnd }) =>
+      words.slice(lineStart, lineEnd + 1).join(' '),
+    )
+    const width = segments.reduce((max, segment) => Math.max(max, segment.width), 0)
+    const height = Math.max(lineHeight, lines.length * lineHeight)
+
+    return { lines, width, height }
+  }
+
+  let bestLayout = wrapWithWidth(maxWidth)
+  let bestRadius = calculateNodeRadius(bestLayout.width, bestLayout.height)
+
+  candidateWidths.forEach((candidate) => {
+    if (!Number.isFinite(candidate) || candidate <= 0) {
+      return
+    }
+
+    const layout = wrapWithWidth(candidate)
+    const radius = calculateNodeRadius(layout.width, layout.height)
+
+    if (radius + NODE_RADIUS_EPSILON < bestRadius) {
+      bestLayout = layout
+      bestRadius = radius
+      return
+    }
+
+    if (Math.abs(radius - bestRadius) <= NODE_RADIUS_EPSILON) {
+      if (layout.width < bestLayout.width - NODE_RADIUS_EPSILON) {
+        bestLayout = layout
+        bestRadius = radius
+      }
+    }
+  })
+
+  const radius = Math.max(NODE_BASE_RADIUS, bestRadius)
+
+  return {
+    lines: bestLayout.lines.length > 0 ? bestLayout.lines : [label],
+    width: bestLayout.width,
+    height: bestLayout.height,
+    lineHeight,
+    radius,
+  }
+}
 
 const TEXT_SIZE_LABELS: Record<TextSize, string> = {
   small: 'Small',
@@ -312,6 +459,14 @@ type AnnotationMetrics = {
   width: number
   height: number
   font: string
+}
+
+type NodeLabelLayout = {
+  lines: string[]
+  width: number
+  height: number
+  lineHeight: number
+  radius: number
 }
 
 function calculateFitView(
@@ -403,6 +558,8 @@ export default function App() {
     [shapes, selectedShapeId],
   )
 
+  const selectedNodeColor = selectedNode?.color ?? DEFAULT_NODE_COLOR
+
   const selectedTextTarget = useMemo(() => {
     if (selectedNode) {
       return {
@@ -471,26 +628,6 @@ export default function App() {
     }
   }, [backgroundTheme])
 
-  const getNodeRadius = useCallback(
-    (node: MindMapNode) => {
-      const context = contextRef.current
-      if (!context) {
-        return NODE_BASE_RADIUS
-      }
-
-      const previousFont = context.font
-      const textSize = normalizeTextSize(node.textSize)
-      context.font = getNodeFont(textSize)
-      const label = node.text.length > 0 ? node.text : 'New Idea'
-      const metrics = context.measureText(label)
-      context.font = previousFont
-
-      const radius = Math.max(NODE_BASE_RADIUS, metrics.width / 2 + NODE_TEXT_PADDING)
-      return radius
-    },
-    [],
-  )
-
   const focusInput = useCallback((input: HTMLInputElement | null) => {
     if (!input) {
       return
@@ -501,6 +638,17 @@ export default function App() {
       input.select()
     })
   }, [])
+
+  const requestTextEditorFocus = useCallback(() => {
+    if (isToolbarCollapsed) {
+      pendingTextFocusRef.current = true
+      setToolbarCollapsed(false)
+      return
+    }
+
+    pendingTextFocusRef.current = false
+    focusInput(textInputRef.current)
+  }, [focusInput, isToolbarCollapsed, setToolbarCollapsed])
 
   const measureAnnotation = useCallback(
     (annotation: MindMapAnnotation): AnnotationMetrics | null => {
@@ -527,6 +675,47 @@ export default function App() {
       return { width, height, font: annotationFont }
     },
     [],
+  )
+
+  const measureNodeLabel = useCallback(
+    (node: MindMapNode): NodeLabelLayout => {
+      const context = contextRef.current
+      const textSize = normalizeTextSize(node.textSize)
+      const label = node.text.length > 0 ? node.text : 'New Idea'
+
+      if (!context) {
+        const lineHeight = getNodeLineHeight(textSize)
+        return {
+          lines: [label],
+          width: 0,
+          height: lineHeight,
+          lineHeight,
+          radius: calculateNodeRadius(0, lineHeight),
+        }
+      }
+
+      const previousFont = context.font
+      context.font = getNodeFont(textSize)
+      const layout = calculateNodeLabelLayout(context, label, textSize)
+      context.font = previousFont
+
+      return layout
+    },
+    [],
+  )
+
+  const getNodeRadius = useCallback(
+    (node: MindMapNode) => {
+      const context = contextRef.current
+      if (!context) {
+        const textSize = normalizeTextSize(node.textSize)
+        return calculateNodeRadius(0, getNodeLineHeight(textSize))
+      }
+
+      const layout = measureNodeLabel(node)
+      return layout.radius
+    },
+    [measureNodeLabel],
   )
 
   useEffect(() => {
@@ -828,9 +1017,10 @@ export default function App() {
     nodesToDraw.forEach((node) => {
       const nodeX = node.x
       const nodeY = node.y
-      const radius = getNodeRadius(node)
+      const layout = measureNodeLabel(node)
+      const radius = layout.radius
 
-      context.fillStyle = node.color || '#4f46e5'
+      context.fillStyle = node.color || DEFAULT_NODE_COLOR
       context.beginPath()
       context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
       context.fill()
@@ -849,7 +1039,19 @@ export default function App() {
       context.font = getNodeFont(nodeTextSize)
       context.textAlign = 'center'
       context.textBaseline = 'middle'
-      context.fillText(node.text, nodeX, nodeY)
+      const lines = layout.lines
+      const lineHeight = layout.lineHeight
+      const lineCount = lines.length
+      if (lineCount === 0) {
+        context.font = previousFont
+        return
+      }
+      const firstLineY = nodeY - ((lineCount - 1) * lineHeight) / 2
+
+      lines.forEach((line, index) => {
+        const lineY = firstLineY + index * lineHeight
+        context.fillText(line, nodeX, lineY)
+      })
       context.font = previousFont
     })
 
@@ -887,7 +1089,7 @@ export default function App() {
     })
 
     context.restore()
-  }, [backgroundTheme, getNodeRadius, measureAnnotation])
+  }, [backgroundTheme, measureAnnotation, measureNodeLabel])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -1653,17 +1855,6 @@ export default function App() {
       adjustZoom(zoomFactor, { screenX: x, screenY: y })
     }
 
-    const requestToolbarForEditing = () => {
-      if (isToolbarCollapsed) {
-        pendingTextFocusRef.current = true
-        setToolbarCollapsed(false)
-        return
-      }
-
-      pendingTextFocusRef.current = false
-      focusInput(textInputRef.current)
-    }
-
     const handleDoubleClick = (event: MouseEvent) => {
       const { x, y } = getCanvasPoint(event)
       const scenePoint = getScenePointFromCanvas(x, y)
@@ -1681,7 +1872,7 @@ export default function App() {
           event.preventDefault()
           return
         }
-        requestToolbarForEditing()
+        requestTextEditorFocus()
         event.preventDefault()
         return
       }
@@ -1714,7 +1905,7 @@ export default function App() {
           event.preventDefault()
           return
         }
-        requestToolbarForEditing()
+        requestTextEditorFocus()
         event.preventDefault()
       }
     }
@@ -1739,13 +1930,11 @@ export default function App() {
   }, [
     adjustZoom,
     dispatch,
-    focusInput,
     isLocked,
     getNodeRadius,
-    isToolbarCollapsed,
     measureAnnotation,
+    requestTextEditorFocus,
     resizeCanvas,
-    setToolbarCollapsed,
   ])
 
   const handleAddChild = useCallback(() => {
@@ -1770,26 +1959,31 @@ export default function App() {
     const nextX = parent.x + Math.cos(angle) * distance
     const nextY = parent.y + Math.sin(angle) * distance
     const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex]
+    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+    const defaultText = 'New Idea'
+
     dispatch({
       type: 'ADD_NODE',
       node: {
         id: newNodeId,
         parentId: parent.id,
-        text: 'New Idea',
+        text: defaultText,
         x: nextX,
         y: nextY,
         color: nodeColor,
         textSize: 'medium',
       },
     })
-  }, [dispatch, isLocked, nodes, selectedNode])
+    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    setTextDraft(defaultText)
+    requestTextEditorFocus()
+  }, [dispatch, isLocked, nodes, requestTextEditorFocus, selectedNode])
 
   const handleAddStandaloneNode = useCallback(() => {
     if (isLocked) {
@@ -1802,26 +1996,31 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
     const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex]
+    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+    const defaultText = 'New Idea'
+
     dispatch({
       type: 'ADD_NODE',
       node: {
         id: newNodeId,
         parentId: null,
-        text: 'New Idea',
+        text: defaultText,
         x: worldCenterX,
         y: worldCenterY,
         color: nodeColor,
         textSize: 'medium',
       },
     })
-  }, [dispatch, isLocked, nodes])
+    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    setTextDraft(defaultText)
+    requestTextEditorFocus()
+  }, [dispatch, isLocked, nodes, requestTextEditorFocus])
 
   const handleAddAnnotation = useCallback(() => {
     if (isLocked) {
@@ -2070,7 +2269,7 @@ export default function App() {
       rootNode.text === 'Root' &&
       rootNode.x === 0 &&
       rootNode.y === 0 &&
-      rootNode.color === '#4f46e5'
+      rootNode.color === DEFAULT_NODE_COLOR
     )
   }, [annotations, nodes, shapes])
 
@@ -2299,7 +2498,7 @@ export default function App() {
       })
       .map((node) => ({
         ...node,
-        color: typeof node.color === 'string' ? node.color : '#4f46e5',
+        color: typeof node.color === 'string' ? node.color : DEFAULT_NODE_COLOR,
         textSize: normalizeTextSize((node as { textSize?: unknown }).textSize),
       }))
 
@@ -2638,6 +2837,25 @@ export default function App() {
     [dispatch, isLocked, selectedTextTarget],
   )
 
+  const handleNodeColorChange = useCallback(
+    (nextColor: string) => {
+      if (isLocked || !selectedNode) {
+        return
+      }
+
+      if (selectedNode.color === nextColor) {
+        return
+      }
+
+      dispatch({
+        type: 'UPDATE_NODE',
+        nodeId: selectedNode.id,
+        updates: { color: nextColor },
+      })
+    },
+    [dispatch, isLocked, selectedNode],
+  )
+
   const toolbarBodyId = 'mindmap-toolbar-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
   const appShellClassName = `app-shell app-shell--${backgroundTheme}`
@@ -2666,6 +2884,7 @@ export default function App() {
     : isEditingAnnotation
     ? 'Selected text box size'
     : 'Text size'
+  const isNodeColorDisabled = isLocked || !selectedNode
   const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
@@ -2833,6 +3052,40 @@ export default function App() {
                     ))}
                   </select>
                 </label>
+                {isEditingNode ? (
+                  <div className="mindmap-toolbar__text-control mindmap-toolbar__color-control">
+                    <span className="mindmap-toolbar__text-label">Node color</span>
+                    <div className="mindmap-toolbar__color-options" role="group" aria-label="Node color">
+                      {NODE_COLOR_OPTIONS.map((option) => {
+                        const isSelectedColor = selectedNodeColor === option.value
+                        const swatchClassName = `mindmap-toolbar__color-swatch${
+                          isSelectedColor ? ' mindmap-toolbar__color-swatch--selected' : ''
+                        }`
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={swatchClassName}
+                            style={{ backgroundColor: option.value }}
+                            onClick={() => handleNodeColorChange(option.value)}
+                            aria-pressed={isSelectedColor}
+                            aria-label={`Set node color to ${option.label}`}
+                            title={
+                              isNodeColorDisabled
+                                ? 'Unlock edits to change color'
+                                : `Set node color to ${option.label}`
+                            }
+                            disabled={isNodeColorDisabled}
+                          >
+                            <span className="visually-hidden">
+                              {isSelectedColor ? `${option.label} selected` : `Use ${option.label}`}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
