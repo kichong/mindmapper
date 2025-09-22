@@ -627,6 +627,17 @@ export default function App() {
     })
   }, [])
 
+  const requestTextEditorFocus = useCallback(() => {
+    if (isToolbarCollapsed) {
+      pendingTextFocusRef.current = true
+      setToolbarCollapsed(false)
+      return
+    }
+
+    pendingTextFocusRef.current = false
+    focusInput(textInputRef.current)
+  }, [focusInput, isToolbarCollapsed, setToolbarCollapsed])
+
   const measureAnnotation = useCallback(
     (annotation: MindMapAnnotation): AnnotationMetrics | null => {
       const context = contextRef.current
@@ -1832,17 +1843,6 @@ export default function App() {
       adjustZoom(zoomFactor, { screenX: x, screenY: y })
     }
 
-    const requestToolbarForEditing = () => {
-      if (isToolbarCollapsed) {
-        pendingTextFocusRef.current = true
-        setToolbarCollapsed(false)
-        return
-      }
-
-      pendingTextFocusRef.current = false
-      focusInput(textInputRef.current)
-    }
-
     const handleDoubleClick = (event: MouseEvent) => {
       const { x, y } = getCanvasPoint(event)
       const scenePoint = getScenePointFromCanvas(x, y)
@@ -1860,7 +1860,7 @@ export default function App() {
           event.preventDefault()
           return
         }
-        requestToolbarForEditing()
+        requestTextEditorFocus()
         event.preventDefault()
         return
       }
@@ -1893,7 +1893,7 @@ export default function App() {
           event.preventDefault()
           return
         }
-        requestToolbarForEditing()
+        requestTextEditorFocus()
         event.preventDefault()
       }
     }
@@ -1918,13 +1918,11 @@ export default function App() {
   }, [
     adjustZoom,
     dispatch,
-    focusInput,
     isLocked,
     getNodeRadius,
-    isToolbarCollapsed,
     measureAnnotation,
+    requestTextEditorFocus,
     resizeCanvas,
-    setToolbarCollapsed,
   ])
 
   const handleAddChild = useCallback(() => {
@@ -1956,19 +1954,24 @@ export default function App() {
         ? crypto.randomUUID()
         : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+    const defaultText = 'New Idea'
+
     dispatch({
       type: 'ADD_NODE',
       node: {
         id: newNodeId,
         parentId: parent.id,
-        text: 'New Idea',
+        text: defaultText,
         x: nextX,
         y: nextY,
         color: nodeColor,
         textSize: 'medium',
       },
     })
-  }, [dispatch, isLocked, nodes, selectedNode])
+    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    setTextDraft(defaultText)
+    requestTextEditorFocus()
+  }, [dispatch, isLocked, nodes, requestTextEditorFocus, selectedNode])
 
   const handleAddStandaloneNode = useCallback(() => {
     if (isLocked) {
@@ -1988,19 +1991,24 @@ export default function App() {
         ? crypto.randomUUID()
         : `node-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+    const defaultText = 'New Idea'
+
     dispatch({
       type: 'ADD_NODE',
       node: {
         id: newNodeId,
         parentId: null,
-        text: 'New Idea',
+        text: defaultText,
         x: worldCenterX,
         y: worldCenterY,
         color: nodeColor,
         textSize: 'medium',
       },
     })
-  }, [dispatch, isLocked, nodes])
+    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    setTextDraft(defaultText)
+    requestTextEditorFocus()
+  }, [dispatch, isLocked, nodes, requestTextEditorFocus])
 
   const handleAddAnnotation = useCallback(() => {
     if (isLocked) {

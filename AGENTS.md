@@ -30,6 +30,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 - The top toolbar collapses. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
 - The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.
 - Double-clicking any node or floating text box should pop the toolbar open and move focus to the shared text editor so users can type immediately.
+- Creating a node (from the toolbar or as a child) should auto-select it, open the toolbar if needed, and focus the shared text editor so typing starts right away.
 
 ## Shipping checklist
 - Update documentation (including `README.md` or scoped guides) whenever you add capabilities or conventions that other agents must know.
