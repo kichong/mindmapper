@@ -225,6 +225,66 @@
   cursor: not-allowed;
 }
 
+.mindmap-shortcuts {
+  position: relative;
+  display: flex;
+}
+
+.mindmap-shortcuts__menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.55);
+  min-width: 18rem;
+  max-width: clamp(18rem, 32vw, 24rem);
+  z-index: 10;
+}
+
+.mindmap-shortcuts__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #facc15;
+}
+
+.mindmap-shortcuts__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.mindmap-shortcuts__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.75rem;
+  background: rgba(30, 41, 59, 0.65);
+}
+
+.mindmap-shortcuts__keys {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #facc15;
+}
+
+.mindmap-shortcuts__description {
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  line-height: 1.35;
+}
+
 .mindmap-toolbar__text-editor {
   display: flex;
   flex-direction: column;
