@@ -132,6 +132,10 @@ export interface MindMapState {
 type MindMapAction =
   | { type: 'ADD_NODE'; node: MindMapNode }
   | { type: 'UPDATE_NODE'; nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }
+  | {
+      type: 'UPDATE_NODES'
+      updates: { nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }[]
+    }
   | { type: 'DELETE_NODE'; nodeId: string }
   | { type: 'DELETE_NODES'; nodeIds: string[] }
   | { type: 'MOVE_NODE'; nodeId: string; x: number; y: number }
@@ -691,6 +695,71 @@ function moveNodes(
   return commitState(state, { nodes: nextNodes })
 }
 
+function updateNodes(
+  state: MindMapState,
+  updates: { nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }[],
+): MindMapState {
+  if (updates.length === 0) {
+    return state
+  }
+
+  const updateMap = new Map<string, Partial<Omit<MindMapNode, 'id'>>>()
+
+  updates.forEach((entry) => {
+    if (!entry || typeof entry.nodeId !== 'string') {
+      return
+    }
+
+    const { nodeId, updates: partialUpdates } = entry
+    if (!partialUpdates || typeof partialUpdates !== 'object') {
+      return
+    }
+
+    const sanitized: Partial<Omit<MindMapNode, 'id'>> = { ...partialUpdates }
+
+    if ('textSize' in sanitized && sanitized.textSize !== undefined) {
+      sanitized.textSize = normalizeTextSize(sanitized.textSize)
+    }
+
+    const existing = updateMap.get(nodeId)
+    if (existing) {
+      updateMap.set(nodeId, { ...existing, ...sanitized })
+    } else {
+      updateMap.set(nodeId, sanitized)
+    }
+  })
+
+  if (updateMap.size === 0) {
+    return state
+  }
+
+  let didChange = false
+
+  const nextNodes = state.nodes.map((node) => {
+    const nodeUpdates = updateMap.get(node.id)
+    if (!nodeUpdates) {
+      return node
+    }
+
+    const merged: MindMapNode = { ...node, ...nodeUpdates, id: node.id }
+    const changedKeys = Object.keys(nodeUpdates) as (keyof MindMapNode)[]
+    const hasDifference = changedKeys.some((key) => merged[key] !== node[key])
+
+    if (!hasDifference) {
+      return node
+    }
+
+    didChange = true
+    return merged
+  })
+
+  if (!didChange) {
+    return state
+  }
+
+  return commitState(state, { nodes: nextNodes })
+}
+
 function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapState {
   switch (action.type) {
     case 'ADD_NODE': {
@@ -707,6 +776,9 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         node.id === action.nodeId ? { ...node, ...action.updates, id: node.id } : node,
       )
       return commitState(state, { nodes: nextNodes })
+    }
+    case 'UPDATE_NODES': {
+      return updateNodes(state, action.updates)
     }
     case 'DELETE_NODE': {
       return deleteNodes(state, [action.nodeId])
