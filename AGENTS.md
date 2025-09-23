@@ -26,9 +26,13 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 ## Features to keep in mind
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
+- Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and the existing `UPDATE_NODE` action so every entry point keeps color changes consistent.
+- `NODE_COLOR_OPTIONS` now marks which swatches are part of the default rotation. The extra red/gray/black swatches are manual-only, so keep `isDefault: true` on the colors that should auto-cycle when new nodes are created.
+- Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.
 - The top toolbar collapses. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
 - The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.
 - Double-clicking any node or floating text box should pop the toolbar open and move focus to the shared text editor so users can type immediately.
+- Creating a node (from the toolbar or as a child) should auto-select it, open the toolbar if needed, and focus the shared text editor so typing starts right away.
 
 ## Shipping checklist
 - Update documentation (including `README.md` or scoped guides) whenever you add capabilities or conventions that other agents must know.

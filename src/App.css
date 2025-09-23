@@ -291,6 +291,42 @@
   box-shadow: none;
 }
 
+.mindmap-toolbar__color-control {
+  gap: 0.4rem;
+}
+
+.mindmap-toolbar__color-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.mindmap-toolbar__color-swatch {
+  width: 2.05rem;
+  height: 2.05rem;
+  min-width: 2.05rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.5);
+  box-shadow: none;
+  background-clip: padding-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.mindmap-toolbar__color-swatch:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
+}
+
+.mindmap-toolbar__color-swatch--selected {
+  border-color: #f8fafc;
+  box-shadow: 0 0 0 3px rgba(248, 250, 252, 0.35);
+}
+
 .mindmap-navigation {
   position: absolute;
   bottom: 1.5rem;
