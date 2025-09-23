@@ -534,7 +534,7 @@ export default function App() {
   const textInputRef = useRef<HTMLInputElement | null>(null)
   const pendingTextFocusRef = useRef(false)
   const {
-    state: { nodes, annotations, shapes, selectedNodeId, selectedAnnotationId, selectedShapeId, history },
+    state: { nodes, annotations, shapes, selectedNodeIds, selectedAnnotationId, selectedShapeId, history },
     dispatch,
   } = useMindMap()
 
@@ -542,14 +542,19 @@ export default function App() {
 
   const nodesRef = useRef(nodes)
   const annotationsRef = useRef(annotations)
-  const selectedNodeRef = useRef(selectedNodeId)
+  const selectedNodeRef = useRef<string[]>([...selectedNodeIds])
   const selectedAnnotationRef = useRef(selectedAnnotationId)
   const shapesRef = useRef(shapes)
   const selectedShapeRef = useRef(selectedShapeId)
 
+  const primarySelectedNodeId = selectedNodeIds[0] ?? null
+
   const selectedNode = useMemo(
-    () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
-    [nodes, selectedNodeId],
+    () =>
+      primarySelectedNodeId
+        ? nodes.find((node) => node.id === primarySelectedNodeId) ?? null
+        : null,
+    [nodes, primarySelectedNodeId],
   )
 
   const selectedAnnotation = useMemo(
@@ -768,7 +773,7 @@ export default function App() {
     }
 
     const nodesToDraw = nodesRef.current
-    const selectedId = selectedNodeRef.current
+    const selectedIds = new Set(selectedNodeRef.current)
     const annotationsToDraw = annotationsRef.current
     const selectedAnnotationId = selectedAnnotationRef.current
     const shapesToDraw = shapesRef.current
@@ -1032,7 +1037,7 @@ export default function App() {
       context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
       context.fill()
 
-      if (node.id === selectedId) {
+      if (selectedIds.has(node.id)) {
         context.lineWidth = connectionHighlightWidth
         context.strokeStyle = '#f97316'
         context.stroke()
@@ -1136,12 +1141,20 @@ export default function App() {
   useEffect(() => {
     nodesRef.current = nodes
     annotationsRef.current = annotations
-    selectedNodeRef.current = selectedNodeId
+    selectedNodeRef.current = [...selectedNodeIds]
     selectedAnnotationRef.current = selectedAnnotationId
     shapesRef.current = shapes
     selectedShapeRef.current = selectedShapeId
     drawScene()
-  }, [annotations, nodes, selectedAnnotationId, selectedNodeId, selectedShapeId, shapes, drawScene])
+  }, [
+    annotations,
+    nodes,
+    selectedAnnotationId,
+    selectedNodeIds,
+    selectedShapeId,
+    shapes,
+    drawScene,
+  ])
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -1273,7 +1286,7 @@ export default function App() {
       }
 
       if (interaction.mode === 'pan' && shouldDeselect && !interaction.moved) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
       }
@@ -1376,7 +1389,7 @@ export default function App() {
         })
 
       if (hitResizeShape) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
 
@@ -1404,7 +1417,7 @@ export default function App() {
       if (hitNode) {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [hitNode.id] })
 
         if (isLocked) {
           event.preventDefault()
@@ -1445,7 +1458,7 @@ export default function App() {
         })
 
       if (hitAnnotation) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
 
@@ -1573,7 +1586,7 @@ export default function App() {
         })
 
       if (hitShape) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
 
@@ -1873,7 +1886,7 @@ export default function App() {
       if (hitNode) {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [hitNode.id] })
         setTextDraft(hitNode.text)
         if (isLocked) {
           event.preventDefault()
@@ -1904,7 +1917,7 @@ export default function App() {
         })
 
       if (hitAnnotation) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setTextDraft(hitAnnotation.text)
@@ -1987,7 +2000,7 @@ export default function App() {
         textSize: 'medium',
       },
     })
-    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [newNodeId] })
     setTextDraft(defaultText)
     requestTextEditorFocus()
   }, [dispatch, isLocked, nodes, requestTextEditorFocus, selectedNode])
@@ -2024,7 +2037,7 @@ export default function App() {
         textSize: 'medium',
       },
     })
-    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [newNodeId] })
     setTextDraft(defaultText)
     requestTextEditorFocus()
   }, [dispatch, isLocked, nodes, requestTextEditorFocus])
@@ -2227,7 +2240,7 @@ export default function App() {
       return
     }
 
-    if (!selectedNodeId || !selectedNode) {
+    if (!primarySelectedNodeId || !selectedNode) {
       return
     }
 
@@ -2235,8 +2248,8 @@ export default function App() {
       return
     }
 
-    dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, isLocked, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
+    dispatch({ type: 'DELETE_NODE', nodeId: primarySelectedNodeId })
+  }, [dispatch, isLocked, primarySelectedNodeId, selectedAnnotation, selectedNode, selectedShape])
 
   const handleUndo = useCallback(() => {
     if (isLocked || past.length === 0) {
