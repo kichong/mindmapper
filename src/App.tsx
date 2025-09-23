@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import {
   DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
@@ -428,6 +436,13 @@ type InteractionState =
       offsetY: number
     }
   | {
+      mode: 'nodes'
+      pointerId: number
+      startSceneX: number
+      startSceneY: number
+      positions: { nodeId: string; startX: number; startY: number }[]
+    }
+  | {
       mode: 'annotation'
       pointerId: number
       annotationId: string
@@ -474,6 +489,19 @@ type NodeLabelLayout = {
   height: number
   lineHeight: number
   radius: number
+}
+
+type CopiedNodeSnapshot = {
+  text: string
+  color: string
+  textSize: TextSize
+  x: number
+  y: number
+}
+
+type ClipboardSnapshot = {
+  nodes: CopiedNodeSnapshot[]
+  pasteCount: number
 }
 
 function calculateFitView(
@@ -534,7 +562,7 @@ export default function App() {
   const textInputRef = useRef<HTMLInputElement | null>(null)
   const pendingTextFocusRef = useRef(false)
   const {
-    state: { nodes, annotations, shapes, selectedNodeId, selectedAnnotationId, selectedShapeId, history },
+    state: { nodes, annotations, shapes, selectedNodeIds, selectedAnnotationId, selectedShapeId, history },
     dispatch,
   } = useMindMap()
 
@@ -542,15 +570,30 @@ export default function App() {
 
   const nodesRef = useRef(nodes)
   const annotationsRef = useRef(annotations)
-  const selectedNodeRef = useRef(selectedNodeId)
+  const selectedNodeRef = useRef<string[]>([...selectedNodeIds])
   const selectedAnnotationRef = useRef(selectedAnnotationId)
   const shapesRef = useRef(shapes)
   const selectedShapeRef = useRef(selectedShapeId)
+  const clipboardRef = useRef<ClipboardSnapshot | null>(null)
 
-  const selectedNode = useMemo(
-    () => (selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null),
-    [nodes, selectedNodeId],
+  const nodeById = useMemo(() => {
+    const map = new Map<string, MindMapNode>()
+    nodes.forEach((node) => {
+      map.set(node.id, node)
+    })
+    return map
+  }, [nodes])
+
+  const selectedNodes = useMemo(
+    () =>
+      selectedNodeIds
+        .map((id) => nodeById.get(id) ?? null)
+        .filter((node): node is MindMapNode => node !== null),
+    [nodeById, selectedNodeIds],
   )
+
+  const primarySelectedNode = selectedNodes[0] ?? null
+  const singleSelectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
 
   const selectedAnnotation = useMemo(
     () =>
@@ -565,15 +608,22 @@ export default function App() {
     [shapes, selectedShapeId],
   )
 
-  const selectedNodeColor = selectedNode?.color ?? DEFAULT_NODE_COLOR
+  const selectedNodeColor = useMemo(() => {
+    if (selectedNodes.length === 0) {
+      return null
+    }
+
+    const [firstNode, ...restNodes] = selectedNodes
+    return restNodes.every((node) => node.color === firstNode.color) ? firstNode.color : null
+  }, [selectedNodes])
 
   const selectedTextTarget = useMemo(() => {
-    if (selectedNode) {
+    if (singleSelectedNode) {
       return {
         kind: 'node' as const,
-        id: selectedNode.id,
-        text: selectedNode.text,
-        textSize: selectedNode.textSize,
+        id: singleSelectedNode.id,
+        text: singleSelectedNode.text,
+        textSize: singleSelectedNode.textSize,
       }
     }
 
@@ -587,9 +637,10 @@ export default function App() {
     }
 
     return null
-  }, [selectedAnnotation, selectedNode])
+  }, [selectedAnnotation, singleSelectedNode])
 
   const [textDraft, setTextDraft] = useState(() => selectedTextTarget?.text ?? '')
+  const [clipboardStatus, setClipboardStatus] = useState<'empty' | 'ready'>('empty')
   const selectedTextSize: TextSize = selectedTextTarget?.textSize ?? 'medium'
   const [viewTransform, setViewTransform] = useState<ViewTransform>(() => ({
     scale: 1,
@@ -768,7 +819,7 @@ export default function App() {
     }
 
     const nodesToDraw = nodesRef.current
-    const selectedId = selectedNodeRef.current
+    const selectedIds = new Set(selectedNodeRef.current)
     const annotationsToDraw = annotationsRef.current
     const selectedAnnotationId = selectedAnnotationRef.current
     const shapesToDraw = shapesRef.current
@@ -1032,7 +1083,7 @@ export default function App() {
       context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
       context.fill()
 
-      if (node.id === selectedId) {
+      if (selectedIds.has(node.id)) {
         context.lineWidth = connectionHighlightWidth
         context.strokeStyle = '#f97316'
         context.stroke()
@@ -1136,12 +1187,20 @@ export default function App() {
   useEffect(() => {
     nodesRef.current = nodes
     annotationsRef.current = annotations
-    selectedNodeRef.current = selectedNodeId
+    selectedNodeRef.current = [...selectedNodeIds]
     selectedAnnotationRef.current = selectedAnnotationId
     shapesRef.current = shapes
     selectedShapeRef.current = selectedShapeId
     drawScene()
-  }, [annotations, nodes, selectedAnnotationId, selectedNodeId, selectedShapeId, shapes, drawScene])
+  }, [
+    annotations,
+    nodes,
+    selectedAnnotationId,
+    selectedNodeIds,
+    selectedShapeId,
+    shapes,
+    drawScene,
+  ])
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -1273,7 +1332,7 @@ export default function App() {
       }
 
       if (interaction.mode === 'pan' && shouldDeselect && !interaction.moved) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
       }
@@ -1376,7 +1435,7 @@ export default function App() {
         })
 
       if (hitResizeShape) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: hitResizeShape.id })
 
@@ -1404,19 +1463,84 @@ export default function App() {
       if (hitNode) {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        const existingSelection = [...selectedNodeRef.current]
+        const isAlreadySelected = existingSelection.includes(hitNode.id)
+        const isModifierPressed = event.shiftKey || event.metaKey || event.ctrlKey
+
+        if (isModifierPressed) {
+          const toggledSelection = isAlreadySelected
+            ? existingSelection.filter((id) => id !== hitNode.id)
+            : [...existingSelection, hitNode.id]
+
+          selectedNodeRef.current = [...toggledSelection]
+          dispatch({ type: 'TOGGLE_NODE_SELECTION', nodeId: hitNode.id })
+          event.preventDefault()
+          return
+        }
+
+        let nextSelection = [...existingSelection]
+        let shouldUpdateSelection = false
+
+        if (isAlreadySelected) {
+          if (existingSelection.length > 1) {
+            const reordered = [hitNode.id, ...existingSelection.filter((id) => id !== hitNode.id)]
+            const orderChanged = reordered.some((id, index) => id !== existingSelection[index])
+            if (orderChanged) {
+              nextSelection = reordered
+              shouldUpdateSelection = true
+            }
+          }
+        } else {
+          nextSelection = [hitNode.id]
+          shouldUpdateSelection = true
+        }
+
+        if (shouldUpdateSelection) {
+          dispatch({ type: 'SET_SELECTED_NODES', nodeIds: nextSelection })
+        }
+
+        selectedNodeRef.current = [...nextSelection]
 
         if (isLocked) {
           event.preventDefault()
           return
         }
 
-        interactionRef.current = {
-          mode: 'node',
-          pointerId: event.pointerId,
-          nodeId: hitNode.id,
-          offsetX: scenePoint.x - hitNode.x,
-          offsetY: scenePoint.y - hitNode.y,
+        const selectedForMove = nextSelection.length > 0 ? nextSelection : [hitNode.id]
+
+        if (selectedForMove.length > 1) {
+          const startPositions = selectedForMove
+            .map((nodeId) => {
+              const node = nodesRef.current.find((nodeItem) => nodeItem.id === nodeId)
+              return node ? { nodeId, startX: node.x, startY: node.y } : null
+            })
+            .filter((value): value is { nodeId: string; startX: number; startY: number } => value !== null)
+
+          if (startPositions.length > 1) {
+            interactionRef.current = {
+              mode: 'nodes',
+              pointerId: event.pointerId,
+              startSceneX: scenePoint.x,
+              startSceneY: scenePoint.y,
+              positions: startPositions,
+            }
+          } else {
+            interactionRef.current = {
+              mode: 'node',
+              pointerId: event.pointerId,
+              nodeId: hitNode.id,
+              offsetX: scenePoint.x - hitNode.x,
+              offsetY: scenePoint.y - hitNode.y,
+            }
+          }
+        } else {
+          interactionRef.current = {
+            mode: 'node',
+            pointerId: event.pointerId,
+            nodeId: hitNode.id,
+            offsetX: scenePoint.x - hitNode.x,
+            offsetY: scenePoint.y - hitNode.y,
+          }
         }
 
         canvas.setPointerCapture(event.pointerId)
@@ -1445,7 +1569,7 @@ export default function App() {
         })
 
       if (hitAnnotation) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
 
@@ -1573,7 +1697,7 @@ export default function App() {
         })
 
       if (hitShape) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
 
@@ -1620,6 +1744,29 @@ export default function App() {
       }
 
       if (isLocked && interaction.mode !== 'pan') {
+        return
+      }
+
+      if (interaction.mode === 'nodes') {
+        const scenePoint = getScenePoint(event)
+
+        const deltaX = scenePoint.x - interaction.startSceneX
+        const deltaY = scenePoint.y - interaction.startSceneY
+
+        if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) {
+          return
+        }
+
+        const updates = interaction.positions.map((position) => ({
+          nodeId: position.nodeId,
+          x: position.startX + deltaX,
+          y: position.startY + deltaY,
+        }))
+
+        dispatch({
+          type: 'MOVE_NODES',
+          updates,
+        })
         return
       }
 
@@ -1873,7 +2020,7 @@ export default function App() {
       if (hitNode) {
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
-        dispatch({ type: 'SELECT_NODE', nodeId: hitNode.id })
+        dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [hitNode.id] })
         setTextDraft(hitNode.text)
         if (isLocked) {
           event.preventDefault()
@@ -1904,7 +2051,7 @@ export default function App() {
         })
 
       if (hitAnnotation) {
-        dispatch({ type: 'SELECT_NODE', nodeId: null })
+        dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: hitAnnotation.id })
         setTextDraft(hitAnnotation.text)
@@ -1954,7 +2101,7 @@ export default function App() {
     }
 
     const rootNode = nodes.find((node) => node.parentId === null)
-    const parent = selectedNode ?? rootNode ?? nodes[0]
+    const parent = primarySelectedNode ?? rootNode ?? nodes[0]
 
     if (!parent) {
       return
@@ -1987,10 +2134,10 @@ export default function App() {
         textSize: 'medium',
       },
     })
-    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [newNodeId] })
     setTextDraft(defaultText)
     requestTextEditorFocus()
-  }, [dispatch, isLocked, nodes, requestTextEditorFocus, selectedNode])
+  }, [dispatch, isLocked, nodes, primarySelectedNode, requestTextEditorFocus])
 
   const handleAddStandaloneNode = useCallback(() => {
     if (isLocked) {
@@ -2024,7 +2171,7 @@ export default function App() {
         textSize: 'medium',
       },
     })
-    dispatch({ type: 'SELECT_NODE', nodeId: newNodeId })
+    dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [newNodeId] })
     setTextDraft(defaultText)
     requestTextEditorFocus()
   }, [dispatch, isLocked, nodes, requestTextEditorFocus])
@@ -2227,16 +2374,100 @@ export default function App() {
       return
     }
 
-    if (!selectedNodeId || !selectedNode) {
+    if (selectedNodes.length === 0) {
       return
     }
 
-    if (selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID) {
+    const removableIds = selectedNodes
+      .filter((node) => !(node.parentId === null && node.id === ROOT_NODE_ID))
+      .map((node) => node.id)
+
+    if (removableIds.length === 0) {
       return
     }
 
-    dispatch({ type: 'DELETE_NODE', nodeId: selectedNodeId })
-  }, [dispatch, isLocked, selectedAnnotation, selectedNode, selectedNodeId, selectedShape])
+    if (removableIds.length === 1) {
+      dispatch({ type: 'DELETE_NODE', nodeId: removableIds[0] })
+      return
+    }
+
+    dispatch({ type: 'DELETE_NODES', nodeIds: removableIds })
+  }, [dispatch, isLocked, selectedAnnotation, selectedNodes, selectedShape])
+
+  const handleCopyNodes = useCallback(() => {
+    if (isLocked) {
+      return false
+    }
+
+    if (selectedNodes.length === 0) {
+      clipboardRef.current = null
+      setClipboardStatus('empty')
+      return false
+    }
+
+    const snapshots: CopiedNodeSnapshot[] = selectedNodes.map((node) => ({
+      text: node.text,
+      color: node.color,
+      textSize: node.textSize,
+      x: node.x,
+      y: node.y,
+    }))
+
+    clipboardRef.current = {
+      nodes: snapshots,
+      pasteCount: 0,
+    }
+    setClipboardStatus('ready')
+    return true
+  }, [isLocked, selectedNodes])
+
+  const handlePasteNodes = useCallback(() => {
+    if (isLocked) {
+      return false
+    }
+
+    const payload = clipboardRef.current
+    if (!payload || payload.nodes.length === 0) {
+      clipboardRef.current = null
+      setClipboardStatus('empty')
+      return false
+    }
+
+    const baseTimestamp = Date.now()
+    const nextPasteCount = payload.pasteCount + 1
+    const offsetStep = 36
+    const offset = offsetStep * nextPasteCount
+
+    const newNodes = payload.nodes.map((node, index) => {
+      const newNodeId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `node-${baseTimestamp}-${index}-${Math.random().toString(16).slice(2)}`
+
+      return {
+        id: newNodeId,
+        parentId: null,
+        text: node.text,
+        color: node.color,
+        textSize: node.textSize,
+        x: node.x + offset,
+        y: node.y + offset,
+      }
+    })
+
+    clipboardRef.current = {
+      nodes: payload.nodes,
+      pasteCount: nextPasteCount,
+    }
+
+    dispatch({
+      type: 'ADD_NODES',
+      nodes: newNodes,
+      selectedNodeIds: newNodes.map((node) => node.id),
+    })
+
+    return true
+  }, [dispatch, isLocked])
 
   const handleUndo = useCallback(() => {
     if (isLocked || past.length === 0) {
@@ -2339,6 +2570,22 @@ export default function App() {
         return
       }
 
+      if (metaOrCtrl && key === 'c') {
+        const didCopy = handleCopyNodes()
+        if (didCopy) {
+          event.preventDefault()
+        }
+        return
+      }
+
+      if (metaOrCtrl && key === 'v') {
+        const didPaste = handlePasteNodes()
+        if (didPaste) {
+          event.preventDefault()
+        }
+        return
+      }
+
       if (key === 'arrowup') {
         event.preventDefault()
         handlePanUp()
@@ -2397,11 +2644,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     handleAddChild,
+    handleCopyNodes,
     handleDeleteSelection,
     handlePanDown,
     handlePanLeft,
     handlePanRight,
     handlePanUp,
+    handlePasteNodes,
     handleRedo,
     handleResetView,
     handleUndo,
@@ -2779,17 +3028,42 @@ export default function App() {
     fileInputRef.current?.click()
   }, [closeExportMenu, isLocked])
 
-  const canDeleteNode = Boolean(
-    selectedNode && !(selectedNode.parentId === null && selectedNode.id === ROOT_NODE_ID),
+  const canDeleteNode = selectedNodes.some(
+    (node) => !(node.parentId === null && node.id === ROOT_NODE_ID),
   )
   const canDeleteAnnotation = Boolean(selectedAnnotation)
   const canDeleteShape = Boolean(selectedShape)
   const canDelete = canDeleteNode || canDeleteAnnotation || canDeleteShape
   const canUndo = past.length > 0
   const canRedo = future.length > 0
+  const hasClipboard = clipboardStatus === 'ready'
+  const canCopyNodes = !isLocked && selectedNodes.length > 0
+  const canPasteNodes = !isLocked && hasClipboard
   const canZoomIn = viewTransform.scale < MAX_ZOOM - 0.001
   const canZoomOut = viewTransform.scale > MIN_ZOOM + 0.001
   const zoomPercentage = Math.round(viewTransform.scale * 100)
+  const copyButtonTitle = isLocked ? 'Unlock edits to copy nodes' : 'Ctrl/Cmd + C'
+  const pasteButtonTitle = isLocked
+    ? 'Unlock edits to paste nodes'
+    : hasClipboard
+      ? 'Ctrl/Cmd + V'
+      : 'Copy nodes first'
+
+  const handleTextEditorKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') {
+        return
+      }
+
+      if (isLocked || selectedTextTarget?.kind !== 'node') {
+        return
+      }
+
+      event.preventDefault()
+      handleAddChild()
+    },
+    [handleAddChild, isLocked, selectedTextTarget],
+  )
 
   const handleTextChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -2846,21 +3120,27 @@ export default function App() {
 
   const handleNodeColorChange = useCallback(
     (nextColor: string) => {
-      if (isLocked || !selectedNode) {
+      if (isLocked || selectedNodes.length === 0) {
         return
       }
 
-      if (selectedNode.color === nextColor) {
+      const updates = selectedNodes
+        .filter((node) => node.color !== nextColor)
+        .map((node) => ({
+          nodeId: node.id,
+          updates: { color: nextColor },
+        }))
+
+      if (updates.length === 0) {
         return
       }
 
       dispatch({
-        type: 'UPDATE_NODE',
-        nodeId: selectedNode.id,
-        updates: { color: nextColor },
+        type: 'UPDATE_NODES',
+        updates,
       })
     },
-    [dispatch, isLocked, selectedNode],
+    [dispatch, isLocked, selectedNodes],
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
@@ -2876,22 +3156,26 @@ export default function App() {
     ? 'Type here to rename the node'
     : isEditingAnnotation
     ? 'Type here to update the text box'
-    : 'Select a node or text box first'
+    : 'Select one node or text box first'
   const textInputAriaLabel = isLocked
     ? 'Text editing is locked'
     : isEditingNode
     ? 'Selected node text'
     : isEditingAnnotation
     ? 'Selected text box text'
-    : 'Edit text'
+    : 'Edit text (select one item first)'
   const textSizeAriaLabel = isLocked
     ? 'Text size selection is locked'
     : isEditingNode
     ? 'Selected node text size'
     : isEditingAnnotation
     ? 'Selected text box size'
-    : 'Text size'
-  const isNodeColorDisabled = isLocked || !selectedNode
+    : 'Text size (select one item first)'
+  const hasNodeSelection = selectedNodes.length > 0
+  const hasMixedNodeColors = hasNodeSelection && selectedNodeColor === null
+  const shouldShowNodeColorControls = hasNodeSelection
+  const isNodeColorDisabled = isLocked || !hasNodeSelection
+  const nodeColorApplyTarget = selectedNodes.length > 1 ? 'all selected nodes' : 'the selected node'
   const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
@@ -3034,6 +3318,7 @@ export default function App() {
                     type="text"
                     value={textDraft}
                     onChange={handleTextChange}
+                    onKeyDown={handleTextEditorKeyDown}
                     placeholder={textEditorPlaceholder}
                     disabled={isTextEditingDisabled}
                     aria-label={textInputAriaLabel}
@@ -3059,9 +3344,11 @@ export default function App() {
                     ))}
                   </select>
                 </label>
-                {isEditingNode ? (
+                {shouldShowNodeColorControls ? (
                   <div className="mindmap-toolbar__text-control mindmap-toolbar__color-control">
-                    <span className="mindmap-toolbar__text-label">Node color</span>
+                    <span className="mindmap-toolbar__text-label">
+                      {hasMixedNodeColors ? 'Node color (mixed)' : 'Node color'}
+                    </span>
                     <div className="mindmap-toolbar__color-options" role="group" aria-label="Node color">
                       {NODE_COLOR_OPTIONS.map((option) => {
                         const isSelectedColor = selectedNodeColor === option.value
@@ -3076,16 +3363,18 @@ export default function App() {
                             style={{ backgroundColor: option.value }}
                             onClick={() => handleNodeColorChange(option.value)}
                             aria-pressed={isSelectedColor}
-                            aria-label={`Set node color to ${option.label}`}
+                            aria-label={`Apply ${option.label} to ${nodeColorApplyTarget}`}
                             title={
                               isNodeColorDisabled
                                 ? 'Unlock edits to change color'
-                                : `Set node color to ${option.label}`
+                                : `Apply ${option.label} to ${nodeColorApplyTarget}`
                             }
                             disabled={isNodeColorDisabled}
                           >
                             <span className="visually-hidden">
-                              {isSelectedColor ? `${option.label} selected` : `Use ${option.label}`}
+                              {isSelectedColor
+                                ? `${option.label} selected for ${nodeColorApplyTarget}`
+                                : `Use ${option.label} for ${nodeColorApplyTarget}`}
                             </span>
                           </button>
                         )
@@ -3179,6 +3468,24 @@ export default function App() {
             title="Reset the canvas to a fresh root node"
           >
             Clear
+          </button>
+        </div>
+        <div className="mindmap-actions__row">
+          <button
+            type="button"
+            onClick={handleCopyNodes}
+            disabled={!canCopyNodes}
+            title={copyButtonTitle}
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            onClick={handlePasteNodes}
+            disabled={!canPasteNodes}
+            title={pasteButtonTitle}
+          >
+            Paste
           </button>
         </div>
         <div className="mindmap-actions__row">

@@ -26,7 +26,9 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 ## Features to keep in mind
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
-- Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and the existing `UPDATE_NODE` action so every entry point keeps color changes consistent.
+- Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and dispatch `UPDATE_NODES` so single and multi-select color changes land in one history entry.
+- Selection now tracks an ordered array. Shift or Meta/Ctrl-click toggles membership, batch reducers like `MOVE_NODES`, `DELETE_NODES`, and `UPDATE_NODES` keep history tidy, and the first id in the array is the "primary" node when a single target is required.
+- Copy/Paste is wired through `handleCopyNodes` / `handlePasteNodes` in `App.tsx`. The `ADD_NODES` reducer clones every selected node into new top-level entries, offsets them slightly, and keeps the whole paste in a single undo step. Buttons live in the bottom-left command panel alongside Ctrl/Cmd+C and Ctrl/Cmd+V shortcuts.
 - Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.
 - The top toolbar collapses. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
 - The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.

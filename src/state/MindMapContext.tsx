@@ -123,17 +123,27 @@ export interface MindMapState {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
   shapes: MindMapShape[]
-  selectedNodeId: string | null
+  selectedNodeIds: string[]
   selectedAnnotationId: string | null
   selectedShapeId: string | null
   history: MindMapHistory
 }
 
 type MindMapAction =
+  | { type: 'ADD_NODES'; nodes: MindMapNode[]; selectedNodeIds?: string[] }
   | { type: 'ADD_NODE'; node: MindMapNode }
   | { type: 'UPDATE_NODE'; nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }
+  | {
+      type: 'UPDATE_NODES'
+      updates: { nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }[]
+    }
   | { type: 'DELETE_NODE'; nodeId: string }
+  | { type: 'DELETE_NODES'; nodeIds: string[] }
   | { type: 'MOVE_NODE'; nodeId: string; x: number; y: number }
+  | { type: 'MOVE_NODES'; updates: { nodeId: string; x: number; y: number }[] }
+  | { type: 'SET_SELECTED_NODES'; nodeIds: string[] }
+  | { type: 'TOGGLE_NODE_SELECTION'; nodeId: string }
+  | { type: 'CLEAR_SELECTED_NODES' }
   | { type: 'CLEAR_ALL' }
   | { type: 'ADD_ANNOTATION'; annotation: MindMapAnnotation }
   | { type: 'UPDATE_ANNOTATION'; annotationId: string; updates: Partial<Omit<MindMapAnnotation, 'id'>> }
@@ -152,7 +162,6 @@ type MindMapAction =
       shapes?: MindMapShape[]
     }
   | { type: 'EXPORT' }
-  | { type: 'SELECT_NODE'; nodeId: string | null }
   | { type: 'SELECT_ANNOTATION'; annotationId: string | null }
   | { type: 'SELECT_SHAPE'; shapeId: string | null }
 
@@ -179,7 +188,7 @@ const initialState: MindMapState = {
   ],
   annotations: [],
   shapes: [],
-  selectedNodeId: ROOT_NODE_ID,
+  selectedNodeIds: [ROOT_NODE_ID],
   selectedAnnotationId: null,
   selectedShapeId: null,
   history: {
@@ -410,6 +419,7 @@ function loadPersistedState(): MindMapState {
       nodes?: unknown
       annotations?: unknown
       selectedNodeId?: unknown
+      selectedNodeIds?: unknown
       selectedAnnotationId?: unknown
       shapes?: unknown
       selectedShapeId?: unknown
@@ -430,10 +440,23 @@ function loadPersistedState(): MindMapState {
 
     const shapes = Array.isArray(parsed.shapes) ? parsed.shapes.filter(isMindMapShape) : []
 
-    const selectedNodeId =
-      typeof parsed.selectedNodeId === 'string' && nodes.some((node) => node.id === parsed.selectedNodeId)
-        ? parsed.selectedNodeId
-        : nodes[0]?.id ?? null
+    const existingNodeIds = new Set(nodes.map((node) => node.id))
+    const parsedNodeIds = Array.isArray(parsed.selectedNodeIds)
+      ? parsed.selectedNodeIds.filter((value): value is string => typeof value === 'string')
+      : []
+
+    const selectedNodeIds = parsedNodeIds.filter((id) => existingNodeIds.has(id))
+
+    if (selectedNodeIds.length === 0) {
+      if (typeof parsed.selectedNodeId === 'string' && existingNodeIds.has(parsed.selectedNodeId)) {
+        selectedNodeIds.push(parsed.selectedNodeId)
+      } else if (parsed.selectedNodeId !== null) {
+        const fallbackId = nodes[0]?.id
+        if (fallbackId) {
+          selectedNodeIds.push(fallbackId)
+        }
+      }
+    }
 
     const selectedAnnotationId =
       typeof parsed.selectedAnnotationId === 'string' &&
@@ -451,7 +474,7 @@ function loadPersistedState(): MindMapState {
       nodes: nodes.map((node) => ({ ...node })),
       annotations: annotations.map((annotation) => ({ ...annotation })),
       shapes: shapes.map((shape) => ({ ...shape })),
-      selectedNodeId,
+      selectedNodeIds,
       selectedAnnotationId,
       selectedShapeId,
       history: {
@@ -491,14 +514,14 @@ function commitState(
     nodes = state.nodes,
     annotations = state.annotations,
     shapes = state.shapes,
-    selectedNodeId = state.selectedNodeId,
+    selectedNodeIds = state.selectedNodeIds,
     selectedAnnotationId = state.selectedAnnotationId,
     selectedShapeId = state.selectedShapeId,
   }: {
     nodes?: MindMapNode[]
     annotations?: MindMapAnnotation[]
     shapes?: MindMapShape[]
-    selectedNodeId?: string | null
+    selectedNodeIds?: string[]
     selectedAnnotationId?: string | null
     selectedShapeId?: string | null
   } = {},
@@ -507,7 +530,7 @@ function commitState(
     nodes,
     annotations,
     shapes,
-    selectedNodeId,
+    selectedNodeIds: [...selectedNodeIds],
     selectedAnnotationId,
     selectedShapeId,
     history: {
@@ -517,27 +540,267 @@ function commitState(
   }
 }
 
-function removeNodeAndDescendants(nodes: MindMapNode[], nodeId: string) {
-  const idsToRemove = new Set<string>()
-
-  const visit = (id: string) => {
-    idsToRemove.add(id)
-    nodes
-      .filter((node) => node.parentId === id)
-      .forEach((child) => visit(child.id))
+function normalizeSelectedNodeIds(nodeIds: string[], nodes: MindMapNode[]) {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    return []
   }
 
-  visit(nodeId)
-  return nodes.filter((node) => !idsToRemove.has(node.id))
+  const existingIds = new Set(nodes.map((node) => node.id))
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  nodeIds.forEach((id) => {
+    if (typeof id !== 'string' || !existingIds.has(id) || seen.has(id)) {
+      return
+    }
+    normalized.push(id)
+    seen.add(id)
+  })
+
+  return normalized
+}
+
+function removeNodesAndDescendants(nodes: MindMapNode[], nodeIds: string[]) {
+  if (nodeIds.length === 0) {
+    return null
+  }
+
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]))
+  const childrenByParent = new Map<string | null, MindMapNode[]>()
+  nodes.forEach((node) => {
+    const list = childrenByParent.get(node.parentId)
+    if (list) {
+      list.push(node)
+      return
+    }
+    childrenByParent.set(node.parentId, [node])
+  })
+
+  const idsToRemove = new Set<string>()
+  const removalRoots: MindMapNode[] = []
+
+  const visit = (id: string) => {
+    if (idsToRemove.has(id)) {
+      return
+    }
+
+    const node = nodeMap.get(id)
+    if (!node) {
+      return
+    }
+
+    idsToRemove.add(id)
+    const children = childrenByParent.get(id)
+    if (children) {
+      children.forEach((child) => visit(child.id))
+    }
+  }
+
+  nodeIds.forEach((id) => {
+    if (idsToRemove.has(id)) {
+      return
+    }
+
+    const node = nodeMap.get(id)
+    if (!node) {
+      return
+    }
+
+    removalRoots.push(node)
+    visit(id)
+  })
+
+  if (idsToRemove.size === 0) {
+    return null
+  }
+
+  const nextNodes = nodes.filter((node) => !idsToRemove.has(node.id))
+
+  return { nextNodes, removedIds: idsToRemove, removalRoots }
+}
+
+function deleteNodes(state: MindMapState, nodeIds: string[]): MindMapState {
+  const result = removeNodesAndDescendants(state.nodes, nodeIds)
+  if (!result) {
+    return state
+  }
+
+  const { nextNodes, removedIds, removalRoots } = result
+  const remainingSelection = state.selectedNodeIds.filter((id) => !removedIds.has(id))
+  const remainingNodeIds = new Set(nextNodes.map((node) => node.id))
+
+  let selectedNodeIds = [...remainingSelection]
+
+  if (selectedNodeIds.length === 0) {
+    const parentFallback = removalRoots
+      .map((node) => node.parentId)
+      .find((parentId) => parentId && !removedIds.has(parentId) && remainingNodeIds.has(parentId))
+
+    if (parentFallback) {
+      selectedNodeIds = [parentFallback]
+    } else {
+      const fallbackId = nextNodes[0]?.id
+      selectedNodeIds = fallbackId ? [fallbackId] : []
+    }
+  }
+
+  return commitState(state, {
+    nodes: nextNodes,
+    selectedNodeIds,
+  })
+}
+
+function moveNodes(
+  state: MindMapState,
+  updates: { nodeId: string; x: number; y: number }[],
+): MindMapState {
+  if (updates.length === 0) {
+    return state
+  }
+
+  const updateMap = new Map<string, { x: number; y: number }>()
+  updates.forEach((update) => {
+    if (typeof update.nodeId !== 'string') {
+      return
+    }
+    updateMap.set(update.nodeId, { x: update.x, y: update.y })
+  })
+
+  if (updateMap.size === 0) {
+    return state
+  }
+
+  let didChange = false
+  const nextNodes = state.nodes.map((node) => {
+    const position = updateMap.get(node.id)
+    if (!position) {
+      return node
+    }
+
+    if (node.x === position.x && node.y === position.y) {
+      return node
+    }
+
+    didChange = true
+    return {
+      ...node,
+      x: position.x,
+      y: position.y,
+    }
+  })
+
+  if (!didChange) {
+    return state
+  }
+
+  return commitState(state, { nodes: nextNodes })
+}
+
+function updateNodes(
+  state: MindMapState,
+  updates: { nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }[],
+): MindMapState {
+  if (updates.length === 0) {
+    return state
+  }
+
+  const updateMap = new Map<string, Partial<Omit<MindMapNode, 'id'>>>()
+
+  updates.forEach((entry) => {
+    if (!entry || typeof entry.nodeId !== 'string') {
+      return
+    }
+
+    const { nodeId, updates: partialUpdates } = entry
+    if (!partialUpdates || typeof partialUpdates !== 'object') {
+      return
+    }
+
+    const sanitized: Partial<Omit<MindMapNode, 'id'>> = { ...partialUpdates }
+
+    if ('textSize' in sanitized && sanitized.textSize !== undefined) {
+      sanitized.textSize = normalizeTextSize(sanitized.textSize)
+    }
+
+    const existing = updateMap.get(nodeId)
+    if (existing) {
+      updateMap.set(nodeId, { ...existing, ...sanitized })
+    } else {
+      updateMap.set(nodeId, sanitized)
+    }
+  })
+
+  if (updateMap.size === 0) {
+    return state
+  }
+
+  let didChange = false
+
+  const nextNodes = state.nodes.map((node) => {
+    const nodeUpdates = updateMap.get(node.id)
+    if (!nodeUpdates) {
+      return node
+    }
+
+    const merged: MindMapNode = { ...node, ...nodeUpdates, id: node.id }
+    const changedKeys = Object.keys(nodeUpdates) as (keyof MindMapNode)[]
+    const hasDifference = changedKeys.some((key) => merged[key] !== node[key])
+
+    if (!hasDifference) {
+      return node
+    }
+
+    didChange = true
+    return merged
+  })
+
+  if (!didChange) {
+    return state
+  }
+
+  return commitState(state, { nodes: nextNodes })
 }
 
 function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapState {
   switch (action.type) {
+    case 'ADD_NODES': {
+      const existingIds = new Set(state.nodes.map((node) => node.id))
+      const newNodes: MindMapNode[] = []
+
+      action.nodes.forEach((node) => {
+        if (!node || typeof node.id !== 'string') {
+          return
+        }
+
+        if (existingIds.has(node.id)) {
+          return
+        }
+
+        existingIds.add(node.id)
+        newNodes.push({ ...node })
+      })
+
+      if (newNodes.length === 0) {
+        return state
+      }
+
+      const nextNodes = [...state.nodes, ...newNodes]
+      const desiredSelection = action.selectedNodeIds ?? newNodes.map((node) => node.id)
+      const selectedNodeIds = normalizeSelectedNodeIds(desiredSelection, nextNodes)
+      const hasSelection = selectedNodeIds.length > 0
+
+      return commitState(state, {
+        nodes: nextNodes,
+        selectedNodeIds,
+        selectedAnnotationId: hasSelection ? null : state.selectedAnnotationId,
+        selectedShapeId: hasSelection ? null : state.selectedShapeId,
+      })
+    }
     case 'ADD_NODE': {
       const nextNodes = [...state.nodes, { ...action.node }]
       return commitState(state, {
         nodes: nextNodes,
-        selectedNodeId: action.node.id,
+        selectedNodeIds: [action.node.id],
         selectedAnnotationId: null,
         selectedShapeId: null,
       })
@@ -548,33 +811,20 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       )
       return commitState(state, { nodes: nextNodes })
     }
+    case 'UPDATE_NODES': {
+      return updateNodes(state, action.updates)
+    }
     case 'DELETE_NODE': {
-      const target = state.nodes.find((node) => node.id === action.nodeId)
-      if (!target) {
-        return state
-      }
-
-      const nextNodes = removeNodeAndDescendants(state.nodes, action.nodeId)
-      const selectedNodeId = nextNodes.some((node) => node.id === state.selectedNodeId)
-        ? state.selectedNodeId
-        : target.parentId
-
-      return commitState(state, {
-        nodes: nextNodes,
-        selectedNodeId: selectedNodeId ?? null,
-      })
+      return deleteNodes(state, [action.nodeId])
+    }
+    case 'DELETE_NODES': {
+      return deleteNodes(state, action.nodeIds)
     }
     case 'MOVE_NODE': {
-      const nextNodes = state.nodes.map((node) =>
-        node.id === action.nodeId
-          ? {
-              ...node,
-              x: action.x,
-              y: action.y,
-            }
-          : node,
-      )
-      return commitState(state, { nodes: nextNodes })
+      return moveNodes(state, [{ nodeId: action.nodeId, x: action.x, y: action.y }])
+    }
+    case 'MOVE_NODES': {
+      return moveNodes(state, action.updates)
     }
     case 'CLEAR_ALL': {
       const hasExtraNodes =
@@ -607,7 +857,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: [resetRoot],
         annotations: [],
         shapes: [],
-        selectedNodeId: ROOT_NODE_ID,
+        selectedNodeIds: [ROOT_NODE_ID],
         selectedAnnotationId: null,
         selectedShapeId: null,
       })
@@ -617,7 +867,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       return commitState(state, {
         annotations: nextAnnotations,
         selectedAnnotationId: action.annotation.id,
-        selectedNodeId: null,
+        selectedNodeIds: [],
         selectedShapeId: null,
       })
     }
@@ -665,7 +915,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       return commitState(state, {
         shapes: nextShapes,
         selectedShapeId: action.shape.id,
-        selectedNodeId: null,
+        selectedNodeIds: [],
         selectedAnnotationId: null,
       })
     }
@@ -737,11 +987,17 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       const past = state.history.past.slice(0, -1)
       const future = [cloneSnapshot(state), ...state.history.future]
 
-      const selectedNodeId =
-        state.selectedNodeId &&
-        previousSnapshot.nodes.some((node) => node.id === state.selectedNodeId)
-          ? state.selectedNodeId
-          : previousSnapshot.nodes[0]?.id ?? null
+      const normalizedSelection = normalizeSelectedNodeIds(
+        state.selectedNodeIds,
+        previousSnapshot.nodes,
+      )
+      const fallbackNodeId = previousSnapshot.nodes[0]?.id
+      const selectedNodeIds =
+        normalizedSelection.length > 0
+          ? normalizedSelection
+          : fallbackNodeId
+          ? [fallbackNodeId]
+          : []
 
       const selectedAnnotationId =
         state.selectedAnnotationId &&
@@ -761,7 +1017,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: cloneNodes(previousSnapshot.nodes),
         annotations: cloneAnnotations(previousSnapshot.annotations),
         shapes: cloneShapes(previousSnapshot.shapes),
-        selectedNodeId,
+        selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
         history: {
@@ -777,10 +1033,17 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       const [nextSnapshot, ...restFuture] = state.history.future
       const past = [...state.history.past, cloneSnapshot(state)]
 
-      const selectedNodeId =
-        state.selectedNodeId && nextSnapshot.nodes.some((node) => node.id === state.selectedNodeId)
-          ? state.selectedNodeId
-          : nextSnapshot.nodes[0]?.id ?? null
+      const normalizedSelection = normalizeSelectedNodeIds(
+        state.selectedNodeIds,
+        nextSnapshot.nodes,
+      )
+      const fallbackNodeId = nextSnapshot.nodes[0]?.id
+      const selectedNodeIds =
+        normalizedSelection.length > 0
+          ? normalizedSelection
+          : fallbackNodeId
+          ? [fallbackNodeId]
+          : []
 
       const selectedAnnotationId =
         state.selectedAnnotationId &&
@@ -798,7 +1061,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: cloneNodes(nextSnapshot.nodes),
         annotations: cloneAnnotations(nextSnapshot.annotations),
         shapes: cloneShapes(nextSnapshot.shapes),
-        selectedNodeId,
+        selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
         history: {
@@ -817,7 +1080,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: importedNodes,
         annotations: importedAnnotations,
         shapes: importedShapes,
-        selectedNodeId: importedNodes[0]?.id ?? null,
+        selectedNodeIds: importedNodes[0] ? [importedNodes[0].id] : [],
         selectedAnnotationId: importedAnnotations[0]?.id ?? null,
         selectedShapeId: importedShapes[0]?.id ?? null,
         history: {
@@ -829,15 +1092,60 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
     case 'EXPORT': {
       return state
     }
-    case 'SELECT_NODE': {
-      if (action.nodeId && !state.nodes.some((node) => node.id === action.nodeId)) {
+    case 'SET_SELECTED_NODES': {
+      const selectedNodeIds = normalizeSelectedNodeIds(action.nodeIds, state.nodes)
+
+      if (
+        selectedNodeIds.length === state.selectedNodeIds.length &&
+        selectedNodeIds.every((id, index) => id === state.selectedNodeIds[index])
+      ) {
         return state
       }
+
+      const hasSelection = selectedNodeIds.length > 0
       return {
         ...state,
-        selectedNodeId: action.nodeId,
-        selectedAnnotationId: action.nodeId ? null : state.selectedAnnotationId,
-        selectedShapeId: action.nodeId ? null : state.selectedShapeId,
+        selectedNodeIds,
+        selectedAnnotationId: hasSelection ? null : state.selectedAnnotationId,
+        selectedShapeId: hasSelection ? null : state.selectedShapeId,
+      }
+    }
+    case 'TOGGLE_NODE_SELECTION': {
+      const exists = state.nodes.some((node) => node.id === action.nodeId)
+      if (!exists) {
+        return state
+      }
+
+      const isSelected = state.selectedNodeIds.includes(action.nodeId)
+      const nextSelection = isSelected
+        ? state.selectedNodeIds.filter((id) => id !== action.nodeId)
+        : [...state.selectedNodeIds, action.nodeId]
+
+      const selectedNodeIds = normalizeSelectedNodeIds(nextSelection, state.nodes)
+
+      if (
+        selectedNodeIds.length === state.selectedNodeIds.length &&
+        selectedNodeIds.every((id, index) => id === state.selectedNodeIds[index])
+      ) {
+        return state
+      }
+
+      const hasSelection = selectedNodeIds.length > 0
+      return {
+        ...state,
+        selectedNodeIds,
+        selectedAnnotationId: hasSelection ? null : state.selectedAnnotationId,
+        selectedShapeId: hasSelection ? null : state.selectedShapeId,
+      }
+    }
+    case 'CLEAR_SELECTED_NODES': {
+      if (state.selectedNodeIds.length === 0) {
+        return state
+      }
+
+      return {
+        ...state,
+        selectedNodeIds: [],
       }
     }
     case 'SELECT_ANNOTATION': {
@@ -850,7 +1158,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       return {
         ...state,
         selectedAnnotationId: action.annotationId,
-        selectedNodeId: action.annotationId ? null : state.selectedNodeId,
+        selectedNodeIds: action.annotationId ? [] : state.selectedNodeIds,
         selectedShapeId: action.annotationId ? null : state.selectedShapeId,
       }
     }
@@ -861,7 +1169,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       return {
         ...state,
         selectedShapeId: action.shapeId,
-        selectedNodeId: action.shapeId ? null : state.selectedNodeId,
+        selectedNodeIds: action.shapeId ? [] : state.selectedNodeIds,
         selectedAnnotationId: action.shapeId ? null : state.selectedAnnotationId,
       }
     }
@@ -883,7 +1191,7 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
       nodes: state.nodes,
       annotations: state.annotations,
       shapes: state.shapes,
-      selectedNodeId: state.selectedNodeId,
+      selectedNodeIds: state.selectedNodeIds,
       selectedAnnotationId: state.selectedAnnotationId,
       selectedShapeId: state.selectedShapeId,
     })
@@ -897,7 +1205,7 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
     state.annotations,
     state.nodes,
     state.selectedAnnotationId,
-    state.selectedNodeId,
+    state.selectedNodeIds,
     state.selectedShapeId,
     state.shapes,
   ])
