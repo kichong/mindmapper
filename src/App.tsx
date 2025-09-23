@@ -32,6 +32,7 @@ const NODE_LINE_HEIGHTS: Record<TextSize, number> = {
 const NODE_WRAP_STEP = 24
 const NODE_RADIUS_EPSILON = 0.5
 const LINK_DISTANCE = 160
+
 type NodeColorOption = { value: string; label: string; isDefault: boolean }
 const NODE_COLOR_OPTIONS: readonly NodeColorOption[] = [
   { value: DEFAULT_NODE_COLOR, label: 'Indigo', isDefault: true },
