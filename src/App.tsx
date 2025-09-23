@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import {
   DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
@@ -3041,6 +3049,22 @@ export default function App() {
       ? 'Ctrl/Cmd + V'
       : 'Copy nodes first'
 
+  const handleTextEditorKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') {
+        return
+      }
+
+      if (isLocked || selectedTextTarget?.kind !== 'node') {
+        return
+      }
+
+      event.preventDefault()
+      handleAddChild()
+    },
+    [handleAddChild, isLocked, selectedTextTarget],
+  )
+
   const handleTextChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const value = event.target.value
@@ -3294,6 +3318,7 @@ export default function App() {
                     type="text"
                     value={textDraft}
                     onChange={handleTextChange}
+                    onKeyDown={handleTextEditorKeyDown}
                     placeholder={textEditorPlaceholder}
                     disabled={isTextEditingDisabled}
                     aria-label={textInputAriaLabel}
