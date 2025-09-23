@@ -483,6 +483,19 @@ type NodeLabelLayout = {
   radius: number
 }
 
+type CopiedNodeSnapshot = {
+  text: string
+  color: string
+  textSize: TextSize
+  x: number
+  y: number
+}
+
+type ClipboardSnapshot = {
+  nodes: CopiedNodeSnapshot[]
+  pasteCount: number
+}
+
 function calculateFitView(
   nodes: MindMapNode[],
   size: CanvasSize,
@@ -553,6 +566,7 @@ export default function App() {
   const selectedAnnotationRef = useRef(selectedAnnotationId)
   const shapesRef = useRef(shapes)
   const selectedShapeRef = useRef(selectedShapeId)
+  const clipboardRef = useRef<ClipboardSnapshot | null>(null)
 
   const nodeById = useMemo(() => {
     const map = new Map<string, MindMapNode>()
@@ -618,6 +632,7 @@ export default function App() {
   }, [selectedAnnotation, singleSelectedNode])
 
   const [textDraft, setTextDraft] = useState(() => selectedTextTarget?.text ?? '')
+  const [clipboardStatus, setClipboardStatus] = useState<'empty' | 'ready'>('empty')
   const selectedTextSize: TextSize = selectedTextTarget?.textSize ?? 'medium'
   const [viewTransform, setViewTransform] = useState<ViewTransform>(() => ({
     scale: 1,
@@ -2371,6 +2386,81 @@ export default function App() {
     dispatch({ type: 'DELETE_NODES', nodeIds: removableIds })
   }, [dispatch, isLocked, selectedAnnotation, selectedNodes, selectedShape])
 
+  const handleCopyNodes = useCallback(() => {
+    if (isLocked) {
+      return false
+    }
+
+    if (selectedNodes.length === 0) {
+      clipboardRef.current = null
+      setClipboardStatus('empty')
+      return false
+    }
+
+    const snapshots: CopiedNodeSnapshot[] = selectedNodes.map((node) => ({
+      text: node.text,
+      color: node.color,
+      textSize: node.textSize,
+      x: node.x,
+      y: node.y,
+    }))
+
+    clipboardRef.current = {
+      nodes: snapshots,
+      pasteCount: 0,
+    }
+    setClipboardStatus('ready')
+    return true
+  }, [isLocked, selectedNodes])
+
+  const handlePasteNodes = useCallback(() => {
+    if (isLocked) {
+      return false
+    }
+
+    const payload = clipboardRef.current
+    if (!payload || payload.nodes.length === 0) {
+      clipboardRef.current = null
+      setClipboardStatus('empty')
+      return false
+    }
+
+    const baseTimestamp = Date.now()
+    const nextPasteCount = payload.pasteCount + 1
+    const offsetStep = 36
+    const offset = offsetStep * nextPasteCount
+
+    const newNodes = payload.nodes.map((node, index) => {
+      const newNodeId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `node-${baseTimestamp}-${index}-${Math.random().toString(16).slice(2)}`
+
+      return {
+        id: newNodeId,
+        parentId: null,
+        text: node.text,
+        color: node.color,
+        textSize: node.textSize,
+        x: node.x + offset,
+        y: node.y + offset,
+      }
+    })
+
+    clipboardRef.current = {
+      nodes: payload.nodes,
+      pasteCount: nextPasteCount,
+    }
+
+    dispatch({
+      type: 'ADD_NODES',
+      nodes: newNodes,
+      selectedNodeIds: newNodes.map((node) => node.id),
+    })
+
+    return true
+  }, [dispatch, isLocked])
+
   const handleUndo = useCallback(() => {
     if (isLocked || past.length === 0) {
       return
@@ -2472,6 +2562,22 @@ export default function App() {
         return
       }
 
+      if (metaOrCtrl && key === 'c') {
+        const didCopy = handleCopyNodes()
+        if (didCopy) {
+          event.preventDefault()
+        }
+        return
+      }
+
+      if (metaOrCtrl && key === 'v') {
+        const didPaste = handlePasteNodes()
+        if (didPaste) {
+          event.preventDefault()
+        }
+        return
+      }
+
       if (key === 'arrowup') {
         event.preventDefault()
         handlePanUp()
@@ -2530,11 +2636,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     handleAddChild,
+    handleCopyNodes,
     handleDeleteSelection,
     handlePanDown,
     handlePanLeft,
     handlePanRight,
     handlePanUp,
+    handlePasteNodes,
     handleRedo,
     handleResetView,
     handleUndo,
@@ -2920,9 +3028,18 @@ export default function App() {
   const canDelete = canDeleteNode || canDeleteAnnotation || canDeleteShape
   const canUndo = past.length > 0
   const canRedo = future.length > 0
+  const hasClipboard = clipboardStatus === 'ready'
+  const canCopyNodes = !isLocked && selectedNodes.length > 0
+  const canPasteNodes = !isLocked && hasClipboard
   const canZoomIn = viewTransform.scale < MAX_ZOOM - 0.001
   const canZoomOut = viewTransform.scale > MIN_ZOOM + 0.001
   const zoomPercentage = Math.round(viewTransform.scale * 100)
+  const copyButtonTitle = isLocked ? 'Unlock edits to copy nodes' : 'Ctrl/Cmd + C'
+  const pasteButtonTitle = isLocked
+    ? 'Unlock edits to paste nodes'
+    : hasClipboard
+      ? 'Ctrl/Cmd + V'
+      : 'Copy nodes first'
 
   const handleTextChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -3326,6 +3443,24 @@ export default function App() {
             title="Reset the canvas to a fresh root node"
           >
             Clear
+          </button>
+        </div>
+        <div className="mindmap-actions__row">
+          <button
+            type="button"
+            onClick={handleCopyNodes}
+            disabled={!canCopyNodes}
+            title={copyButtonTitle}
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            onClick={handlePasteNodes}
+            disabled={!canPasteNodes}
+            title={pasteButtonTitle}
+          >
+            Paste
           </button>
         </div>
         <div className="mindmap-actions__row">

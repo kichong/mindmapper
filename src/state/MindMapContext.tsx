@@ -130,6 +130,7 @@ export interface MindMapState {
 }
 
 type MindMapAction =
+  | { type: 'ADD_NODES'; nodes: MindMapNode[]; selectedNodeIds?: string[] }
   | { type: 'ADD_NODE'; node: MindMapNode }
   | { type: 'UPDATE_NODE'; nodeId: string; updates: Partial<Omit<MindMapNode, 'id'>> }
   | {
@@ -762,6 +763,39 @@ function updateNodes(
 
 function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapState {
   switch (action.type) {
+    case 'ADD_NODES': {
+      const existingIds = new Set(state.nodes.map((node) => node.id))
+      const newNodes: MindMapNode[] = []
+
+      action.nodes.forEach((node) => {
+        if (!node || typeof node.id !== 'string') {
+          return
+        }
+
+        if (existingIds.has(node.id)) {
+          return
+        }
+
+        existingIds.add(node.id)
+        newNodes.push({ ...node })
+      })
+
+      if (newNodes.length === 0) {
+        return state
+      }
+
+      const nextNodes = [...state.nodes, ...newNodes]
+      const desiredSelection = action.selectedNodeIds ?? newNodes.map((node) => node.id)
+      const selectedNodeIds = normalizeSelectedNodeIds(desiredSelection, nextNodes)
+      const hasSelection = selectedNodeIds.length > 0
+
+      return commitState(state, {
+        nodes: nextNodes,
+        selectedNodeIds,
+        selectedAnnotationId: hasSelection ? null : state.selectedAnnotationId,
+        selectedShapeId: hasSelection ? null : state.selectedShapeId,
+      })
+    }
     case 'ADD_NODE': {
       const nextNodes = [...state.nodes, { ...action.node }]
       return commitState(state, {
