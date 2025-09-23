@@ -32,16 +32,23 @@ const NODE_LINE_HEIGHTS: Record<TextSize, number> = {
 const NODE_WRAP_STEP = 24
 const NODE_RADIUS_EPSILON = 0.5
 const LINK_DISTANCE = 160
-type NodeColorOption = { value: string; label: string }
+
+type NodeColorOption = { value: string; label: string; isDefault: boolean }
 const NODE_COLOR_OPTIONS: readonly NodeColorOption[] = [
-  { value: DEFAULT_NODE_COLOR, label: 'Indigo' },
-  { value: '#22d3ee', label: 'Teal' },
-  { value: '#a855f7', label: 'Purple' },
-  { value: '#10b981', label: 'Green' },
-  { value: '#f97316', label: 'Orange' },
-  { value: '#facc15', label: 'Yellow' },
+  { value: DEFAULT_NODE_COLOR, label: 'Indigo', isDefault: true },
+  { value: '#22d3ee', label: 'Teal', isDefault: true },
+  { value: '#a855f7', label: 'Purple', isDefault: true },
+  { value: '#10b981', label: 'Green', isDefault: true },
+  { value: '#f97316', label: 'Orange', isDefault: true },
+  { value: '#facc15', label: 'Yellow', isDefault: true },
+  { value: '#ef4444', label: 'Red', isDefault: false },
+  { value: '#6b7280', label: 'Slate Gray', isDefault: false },
+  { value: '#9ca3af', label: 'Mist Gray', isDefault: false },
+  { value: '#111827', label: 'Black', isDefault: false },
 ]
-const FALLBACK_COLORS = NODE_COLOR_OPTIONS.map((option) => option.value)
+const FALLBACK_COLORS = NODE_COLOR_OPTIONS.filter((option) => option.isDefault).map(
+  (option) => option.value,
+)
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 1.2
