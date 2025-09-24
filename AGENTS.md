@@ -27,6 +27,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
 - Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and dispatch `UPDATE_NODES` so single and multi-select color changes land in one history entry.
+- Keyboard shortcuts now include Space (or C) to recentre the view and Shift+Enter to add a detached idea. Keep the shortcut list in `KEYBOARD_SHORTCUTS` (App.tsx) in sync when you add or remove shortcuts so the in-app cheat sheet stays accurate.
 - Selection now tracks an ordered array. Shift or Meta/Ctrl-click toggles membership, batch reducers like `MOVE_NODES`, `DELETE_NODES`, and `UPDATE_NODES` keep history tidy, and the first id in the array is the "primary" node when a single target is required.
 - Copy/Paste is wired through `handleCopyNodes` / `handlePasteNodes` in `App.tsx`. The `ADD_NODES` reducer clones every selected node into new top-level entries, offsets them slightly, and keeps the whole paste in a single undo step. Buttons live in the bottom-left command panel alongside Ctrl/Cmd+C and Ctrl/Cmd+V shortcuts.
 - Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.

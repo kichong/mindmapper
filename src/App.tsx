@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -117,6 +118,22 @@ const LINE_MIN_THICKNESS = 1.2
 const LINE_HIT_PADDING = 6
 const LINE_DEFAULT_COLOR = '#22d3ee'
 const LINE_DEFAULT_ANGLE = 0
+
+const KEYBOARD_SHORTCUTS: readonly { keys: string; description: string }[] = [
+  { keys: 'Enter', description: 'Add a child idea to the selected node' },
+  { keys: 'Shift + Enter', description: 'Add a detached idea at the center of the view' },
+  { keys: 'Space or C', description: 'Recenter the view to focus on your map' },
+  { keys: 'Arrow keys', description: 'Pan the canvas up, down, left, or right' },
+  { keys: '+ or =', description: 'Zoom in' },
+  { keys: '- or _', description: 'Zoom out' },
+  { keys: 'Ctrl/Cmd + C', description: 'Copy the selected ideas' },
+  { keys: 'Ctrl/Cmd + V', description: 'Paste the copied ideas' },
+  { keys: 'Ctrl/Cmd + Z', description: 'Undo the last change' },
+  { keys: 'Ctrl/Cmd + Shift + Z', description: 'Redo the last undone change' },
+  { keys: 'Delete or Backspace', description: 'Delete the selected items' },
+]
+
+const VISIBLE_SHORTCUT_COUNT = 6
 
 type Point = { x: number; y: number }
 
@@ -650,7 +667,11 @@ export default function App() {
   const viewRef = useRef(viewTransform)
   const hasAutoCenteredRef = useRef(false)
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
+  const shortcutsMenuRef = useRef<HTMLDivElement | null>(null)
+  const shortcutsListRef = useRef<HTMLUListElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
+  const [isShortcutsOpen, setShortcutsOpen] = useState(false)
+  const [shortcutsVisibleHeight, setShortcutsVisibleHeight] = useState<number | null>(null)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
@@ -685,6 +706,48 @@ export default function App() {
       document.body.style.backgroundColor = darkColor
     }
   }, [backgroundTheme])
+
+  useLayoutEffect(() => {
+    if (!isShortcutsOpen) {
+      setShortcutsVisibleHeight(null)
+      return
+    }
+
+    const listElement = shortcutsListRef.current
+    if (!listElement) {
+      return
+    }
+
+    const readGap = () => {
+      const styles = window.getComputedStyle(listElement)
+      const rawGap = styles.rowGap || styles.gap || '0'
+      const parsedGap = Number.parseFloat(rawGap)
+      return Number.isNaN(parsedGap) ? 0 : parsedGap
+    }
+
+    const updateHeight = () => {
+      const elements = Array.from(listElement.children).slice(0, VISIBLE_SHORTCUT_COUNT)
+      const items = elements.filter((element): element is HTMLElement => element instanceof HTMLElement)
+
+      if (items.length === 0) {
+        setShortcutsVisibleHeight(null)
+        return
+      }
+
+      const totalHeight = items.reduce((total, item) => total + item.getBoundingClientRect().height, 0)
+      const gap = readGap()
+      const totalGap = Math.max(items.length - 1, 0) * gap
+      setShortcutsVisibleHeight(Math.ceil(totalHeight + totalGap))
+    }
+
+    const animationId = window.requestAnimationFrame(updateHeight)
+    window.addEventListener('resize', updateHeight)
+
+    return () => {
+      window.cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', updateHeight)
+    }
+  }, [isShortcutsOpen])
 
   const focusInput = useCallback((input: HTMLInputElement | null) => {
     if (!input) {
@@ -791,8 +854,18 @@ export default function App() {
     setExportMenuOpen(false)
   }, [])
 
+  const closeShortcutsMenu = useCallback(() => {
+    setShortcutsOpen(false)
+  }, [])
+
   const toggleExportMenu = useCallback(() => {
+    setShortcutsOpen(false)
     setExportMenuOpen((previous) => !previous)
+  }, [])
+
+  const toggleShortcutsMenu = useCallback(() => {
+    setExportMenuOpen(false)
+    setShortcutsOpen((previous) => !previous)
   }, [])
 
   const toggleToolbarCollapsed = useCallback(() => {
@@ -1204,19 +1277,26 @@ export default function App() {
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
-      const menu = exportMenuRef.current
-      if (!menu) {
+      const target = event.target
+      if (!(target instanceof Node)) {
         return
       }
 
-      if (event.target instanceof Node && !menu.contains(event.target)) {
+      const menu = exportMenuRef.current
+      if (menu && !menu.contains(target)) {
         closeExportMenu()
+      }
+
+      const shortcutsMenu = shortcutsMenuRef.current
+      if (shortcutsMenu && !shortcutsMenu.contains(target)) {
+        closeShortcutsMenu()
       }
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         closeExportMenu()
+        closeShortcutsMenu()
       }
     }
 
@@ -1226,7 +1306,7 @@ export default function App() {
       document.removeEventListener('pointerdown', handlePointerDown)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [closeExportMenu])
+  }, [closeExportMenu, closeShortcutsMenu])
 
   const adjustZoom = useCallback((factor: number, pivot?: { screenX: number; screenY: number }) => {
     setViewTransform((previous) => {
@@ -2622,6 +2702,12 @@ export default function App() {
         return
       }
 
+      if (!metaOrCtrl && !event.altKey && !event.shiftKey && (event.code === 'Space' || key === ' ')) {
+        event.preventDefault()
+        handleResetView()
+        return
+      }
+
       if (key === 'c') {
         event.preventDefault()
         handleResetView()
@@ -2630,7 +2716,11 @@ export default function App() {
 
       if (key === 'enter') {
         event.preventDefault()
-        handleAddChild()
+        if (event.shiftKey) {
+          handleAddStandaloneNode()
+        } else {
+          handleAddChild()
+        }
         return
       }
 
@@ -2644,6 +2734,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     handleAddChild,
+    handleAddStandaloneNode,
     handleCopyNodes,
     handleDeleteSelection,
     handlePanDown,
@@ -3025,8 +3116,9 @@ export default function App() {
     }
 
     closeExportMenu()
+    closeShortcutsMenu()
     fileInputRef.current?.click()
-  }, [closeExportMenu, isLocked])
+  }, [closeExportMenu, closeShortcutsMenu, isLocked])
 
   const canDeleteNode = selectedNodes.some(
     (node) => !(node.parentId === null && node.id === ROOT_NODE_ID),
@@ -3055,14 +3147,24 @@ export default function App() {
         return
       }
 
-      if (isLocked || selectedTextTarget?.kind !== 'node') {
+      if (isLocked) {
+        return
+      }
+
+      if (event.shiftKey) {
+        event.preventDefault()
+        handleAddStandaloneNode()
+        return
+      }
+
+      if (selectedTextTarget?.kind !== 'node') {
         return
       }
 
       event.preventDefault()
       handleAddChild()
     },
-    [handleAddChild, isLocked, selectedTextTarget],
+    [handleAddChild, handleAddStandaloneNode, isLocked, selectedTextTarget],
   )
 
   const handleTextChange = useCallback(
@@ -3144,6 +3246,7 @@ export default function App() {
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
+  const shortcutsMenuId = 'mindmap-shortcuts-menu'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
   const appShellClassName = `app-shell app-shell--${backgroundTheme}`
   const isEditingNode = selectedTextTarget?.kind === 'node'
@@ -3208,12 +3311,17 @@ export default function App() {
             <button
               type="button"
               onClick={handleAddStandaloneNode}
-              title="Add a new idea that starts disconnected"
+              title="Shift + Enter to add a new detached idea"
               disabled={isLocked}
             >
               Add idea
             </button>
-            <button type="button" onClick={handleAddChild} title="Enter" disabled={isLocked}>
+            <button
+              type="button"
+              onClick={handleAddChild}
+              title="Enter to add a child idea"
+              disabled={isLocked}
+            >
               Add child
             </button>
             <button
@@ -3422,6 +3530,46 @@ export default function App() {
             </div>
           ) : null}
         </div>
+        <div className="mindmap-shortcuts" ref={shortcutsMenuRef}>
+          <button
+            type="button"
+            onClick={toggleShortcutsMenu}
+            className="mindmap-toolbar__io-button"
+            aria-expanded={isShortcutsOpen}
+            aria-haspopup="dialog"
+            aria-controls={shortcutsMenuId}
+            title="See all keyboard shortcuts"
+          >
+            Shortcuts
+          </button>
+          {isShortcutsOpen ? (
+            <div
+              className="mindmap-shortcuts__menu"
+              role="dialog"
+              aria-modal="false"
+              aria-label="Keyboard shortcuts"
+              id={shortcutsMenuId}
+            >
+              <p className="mindmap-shortcuts__title">Keyboard shortcuts</p>
+              <ul
+                className="mindmap-shortcuts__list"
+                ref={shortcutsListRef}
+                style={
+                  shortcutsVisibleHeight !== null
+                    ? { maxHeight: shortcutsVisibleHeight }
+                    : undefined
+                }
+              >
+                {KEYBOARD_SHORTCUTS.map((shortcut) => (
+                  <li className="mindmap-shortcuts__item" key={shortcut.keys}>
+                    <span className="mindmap-shortcuts__keys">{shortcut.keys}</span>
+                    <span className="mindmap-shortcuts__description">{shortcut.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -3501,7 +3649,7 @@ export default function App() {
             type="button"
             onClick={handleRedo}
             disabled={isLocked || !canRedo}
-            title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z"
+            title="Ctrl/Cmd + Shift + Z"
           >
             Redo
           </button>
