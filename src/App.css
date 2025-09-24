@@ -261,6 +261,8 @@
   padding: 0;
   margin: 0;
   list-style: none;
+  max-height: 21rem;
+  overflow-y: auto;
 }
 
 .mindmap-shortcuts__item {

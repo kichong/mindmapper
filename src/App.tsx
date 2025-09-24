@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -128,9 +129,11 @@ const KEYBOARD_SHORTCUTS: readonly { keys: string; description: string }[] = [
   { keys: 'Ctrl/Cmd + C', description: 'Copy the selected ideas' },
   { keys: 'Ctrl/Cmd + V', description: 'Paste the copied ideas' },
   { keys: 'Ctrl/Cmd + Z', description: 'Undo the last change' },
-  { keys: 'Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y', description: 'Redo the last undone change' },
+  { keys: 'Ctrl/Cmd + Shift + Z', description: 'Redo the last undone change' },
   { keys: 'Delete or Backspace', description: 'Delete the selected items' },
 ]
+
+const VISIBLE_SHORTCUT_COUNT = 6
 
 type Point = { x: number; y: number }
 
@@ -665,8 +668,10 @@ export default function App() {
   const hasAutoCenteredRef = useRef(false)
   const exportMenuRef = useRef<HTMLDivElement | null>(null)
   const shortcutsMenuRef = useRef<HTMLDivElement | null>(null)
+  const shortcutsListRef = useRef<HTMLUListElement | null>(null)
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
   const [isShortcutsOpen, setShortcutsOpen] = useState(false)
+  const [shortcutsVisibleHeight, setShortcutsVisibleHeight] = useState<number | null>(null)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
@@ -701,6 +706,48 @@ export default function App() {
       document.body.style.backgroundColor = darkColor
     }
   }, [backgroundTheme])
+
+  useLayoutEffect(() => {
+    if (!isShortcutsOpen) {
+      setShortcutsVisibleHeight(null)
+      return
+    }
+
+    const listElement = shortcutsListRef.current
+    if (!listElement) {
+      return
+    }
+
+    const readGap = () => {
+      const styles = window.getComputedStyle(listElement)
+      const rawGap = styles.rowGap || styles.gap || '0'
+      const parsedGap = Number.parseFloat(rawGap)
+      return Number.isNaN(parsedGap) ? 0 : parsedGap
+    }
+
+    const updateHeight = () => {
+      const elements = Array.from(listElement.children).slice(0, VISIBLE_SHORTCUT_COUNT)
+      const items = elements.filter((element): element is HTMLElement => element instanceof HTMLElement)
+
+      if (items.length === 0) {
+        setShortcutsVisibleHeight(null)
+        return
+      }
+
+      const totalHeight = items.reduce((total, item) => total + item.getBoundingClientRect().height, 0)
+      const gap = readGap()
+      const totalGap = Math.max(items.length - 1, 0) * gap
+      setShortcutsVisibleHeight(Math.ceil(totalHeight + totalGap))
+    }
+
+    const animationId = window.requestAnimationFrame(updateHeight)
+    window.addEventListener('resize', updateHeight)
+
+    return () => {
+      window.cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', updateHeight)
+    }
+  }, [isShortcutsOpen])
 
   const focusInput = useCallback((input: HTMLInputElement | null) => {
     if (!input) {
@@ -3504,7 +3551,15 @@ export default function App() {
               id={shortcutsMenuId}
             >
               <p className="mindmap-shortcuts__title">Keyboard shortcuts</p>
-              <ul className="mindmap-shortcuts__list">
+              <ul
+                className="mindmap-shortcuts__list"
+                ref={shortcutsListRef}
+                style={
+                  shortcutsVisibleHeight !== null
+                    ? { maxHeight: shortcutsVisibleHeight }
+                    : undefined
+                }
+              >
                 {KEYBOARD_SHORTCUTS.map((shortcut) => (
                   <li className="mindmap-shortcuts__item" key={shortcut.keys}>
                     <span className="mindmap-shortcuts__keys">{shortcut.keys}</span>
@@ -3594,7 +3649,7 @@ export default function App() {
             type="button"
             onClick={handleRedo}
             disabled={isLocked || !canRedo}
-            title="Ctrl/Cmd + Y or Shift + Ctrl/Cmd + Z"
+            title="Ctrl/Cmd + Shift + Z"
           >
             Redo
           </button>
