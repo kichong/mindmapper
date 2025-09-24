@@ -3326,7 +3326,12 @@ export default function App() {
               className="mindmap-toolbar__symbol-button"
               disabled={isLocked}
             >
-              <span aria-hidden="true" className="mindmap-toolbar__symbol">×</span>
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
+              >
+                ×
+              </span>
               <span className="visually-hidden">Add new idea</span>
             </button>
             <button
@@ -3337,7 +3342,12 @@ export default function App() {
               className="mindmap-toolbar__symbol-button"
               disabled={isLocked}
             >
-              <span aria-hidden="true" className="mindmap-toolbar__symbol">+</span>
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--child"
+              >
+                +
+              </span>
               <span className="visually-hidden">Add child idea</span>
             </button>
             <button
