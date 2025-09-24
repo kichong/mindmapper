@@ -673,6 +673,7 @@ export default function App() {
   const [isShortcutsOpen, setShortcutsOpen] = useState(false)
   const [shortcutsVisibleHeight, setShortcutsVisibleHeight] = useState<number | null>(null)
   const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
+  const [areActionsCollapsed, setActionsCollapsed] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
 
@@ -870,6 +871,10 @@ export default function App() {
 
   const toggleToolbarCollapsed = useCallback(() => {
     setToolbarCollapsed((previous) => !previous)
+  }, [])
+
+  const toggleActionsCollapsed = useCallback(() => {
+    setActionsCollapsed((previous) => !previous)
   }, [])
 
   const toggleLock = useCallback(() => {
@@ -3247,7 +3252,9 @@ export default function App() {
 
   const toolbarBodyId = 'mindmap-toolbar-body'
   const shortcutsMenuId = 'mindmap-shortcuts-menu'
+  const actionsBodyId = 'mindmap-actions-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
+  const actionsClassName = `mindmap-actions${areActionsCollapsed ? ' mindmap-actions--collapsed' : ''}`
   const appShellClassName = `app-shell app-shell--${backgroundTheme}`
   const isEditingNode = selectedTextTarget?.kind === 'node'
   const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
@@ -3286,10 +3293,13 @@ export default function App() {
   const lockButtonIcon = isLocked ? '🔒' : '🔓'
   const isDarkBackground = backgroundTheme === 'dark'
   const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
-  const backgroundButtonIcon = isDarkBackground ? '🌙' : '☀️'
+  const backgroundButtonIcon = isDarkBackground ? '🌑' : '☀️'
   const backgroundButtonTitle = isDarkBackground
     ? 'Switch to a bright background'
     : 'Switch to a deep background'
+  const actionsToggleIcon = areActionsCollapsed ? '▴' : '▾'
+  const actionsToggleTitle = areActionsCollapsed ? 'Show edit commands' : 'Hide edit commands'
+  const actionsToggleLabel = areActionsCollapsed ? 'Expand edit commands' : 'Collapse edit commands'
 
   return (
     <div className={appShellClassName}>
@@ -3312,25 +3322,44 @@ export default function App() {
               type="button"
               onClick={handleAddStandaloneNode}
               title="Shift + Enter to add a new detached idea"
+              aria-label="Add new idea"
+              className="mindmap-toolbar__symbol-button"
               disabled={isLocked}
             >
-              Add idea
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
+              >
+                ×
+              </span>
+              <span className="visually-hidden">Add new idea</span>
             </button>
             <button
               type="button"
               onClick={handleAddChild}
               title="Enter to add a child idea"
+              aria-label="Add child idea"
+              className="mindmap-toolbar__symbol-button"
               disabled={isLocked}
             >
-              Add child
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--child"
+              >
+                +
+              </span>
+              <span className="visually-hidden">Add child idea</span>
             </button>
             <button
               type="button"
               onClick={handleAddAnnotation}
               title="Add a floating text box"
+              aria-label="Add textbox"
+              className="mindmap-toolbar__symbol-button"
               disabled={isLocked}
             >
-              Textbox
+              <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--text">abc</span>
+              <span className="visually-hidden">Add textbox</span>
             </button>
             <button
               type="button"
@@ -3578,81 +3607,96 @@ export default function App() {
           onChange={handleFileChange}
         />
       </div>
-      <div className="mindmap-actions" role="group" aria-label="Edit commands">
-        <div className="mindmap-actions__row">
+      <div className={actionsClassName} role="group" aria-label="Edit commands">
+        <div className="mindmap-actions__header">
           <button
             type="button"
-            onClick={toggleLock}
-            aria-pressed={isLocked}
-            title={lockButtonTitle}
+            onClick={toggleActionsCollapsed}
+            className="mindmap-actions__collapse-button"
+            aria-expanded={!areActionsCollapsed}
+            aria-controls={actionsBodyId}
+            title={actionsToggleTitle}
           >
-            <span aria-hidden="true" className="mindmap-actions__icon">{lockButtonIcon}</span>
-            <span className="visually-hidden">{lockButtonLabel}</span>
-          </button>
-          <button
-            type="button"
-            onClick={toggleBackgroundTheme}
-            aria-pressed={isDarkBackground}
-            aria-label={backgroundButtonTitle}
-            title={backgroundButtonTitle}
-          >
-            <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
-            <span className="visually-hidden">{backgroundButtonLabel}</span>
+            <span aria-hidden="true">{actionsToggleIcon}</span>
+            <span className="visually-hidden">{actionsToggleLabel}</span>
           </button>
         </div>
-        <div className="mindmap-actions__row">
-          <button
-            type="button"
-            onClick={handleDeleteSelection}
-            disabled={isLocked || !canDelete}
-            title="Delete or Backspace"
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            onClick={handleClearAll}
-            disabled={isLocked || !canClear}
-            title="Reset the canvas to a fresh root node"
-          >
-            Clear
-          </button>
-        </div>
-        <div className="mindmap-actions__row">
-          <button
-            type="button"
-            onClick={handleCopyNodes}
-            disabled={!canCopyNodes}
-            title={copyButtonTitle}
-          >
-            Copy
-          </button>
-          <button
-            type="button"
-            onClick={handlePasteNodes}
-            disabled={!canPasteNodes}
-            title={pasteButtonTitle}
-          >
-            Paste
-          </button>
-        </div>
-        <div className="mindmap-actions__row">
-          <button
-            type="button"
-            onClick={handleUndo}
-            disabled={isLocked || !canUndo}
-            title="Ctrl/Cmd + Z"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={handleRedo}
-            disabled={isLocked || !canRedo}
-            title="Ctrl/Cmd + Shift + Z"
-          >
-            Redo
-          </button>
+        <div id={actionsBodyId} className="mindmap-actions__body" hidden={areActionsCollapsed}>
+          <div className="mindmap-actions__row">
+            <button
+              type="button"
+              onClick={toggleLock}
+              aria-pressed={isLocked}
+              title={lockButtonTitle}
+            >
+              <span aria-hidden="true" className="mindmap-actions__icon">{lockButtonIcon}</span>
+              <span className="visually-hidden">{lockButtonLabel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleBackgroundTheme}
+              aria-pressed={isDarkBackground}
+              aria-label={backgroundButtonTitle}
+              title={backgroundButtonTitle}
+            >
+              <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
+              <span className="visually-hidden">{backgroundButtonLabel}</span>
+            </button>
+          </div>
+          <div className="mindmap-actions__row">
+            <button
+              type="button"
+              onClick={handleDeleteSelection}
+              disabled={isLocked || !canDelete}
+              title="Delete or Backspace"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              disabled={isLocked || !canClear}
+              title="Reset the canvas to a fresh root node"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="mindmap-actions__row">
+            <button
+              type="button"
+              onClick={handleCopyNodes}
+              disabled={!canCopyNodes}
+              title={copyButtonTitle}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={handlePasteNodes}
+              disabled={!canPasteNodes}
+              title={pasteButtonTitle}
+            >
+              Paste
+            </button>
+          </div>
+          <div className="mindmap-actions__row">
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={isLocked || !canUndo}
+              title="Ctrl/Cmd + Z"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={handleRedo}
+              disabled={isLocked || !canRedo}
+              title="Ctrl/Cmd + Shift + Z"
+            >
+              Redo
+            </button>
+          </div>
         </div>
       </div>
       <div className="mindmap-navigation" role="group" aria-label="Viewport navigation controls">
