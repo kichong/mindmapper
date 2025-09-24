@@ -99,6 +99,11 @@
   color: #1f2937;
 }
 
+.mindmap-toolbar__symbol--cross-link {
+  color: #0ea5e9;
+  font-size: 1.2rem;
+}
+
 .mindmap-toolbar__symbol--text {
   font-size: 0.9rem;
   letter-spacing: 0.04em;

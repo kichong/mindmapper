@@ -17,6 +17,7 @@ import {
   type MindMapEllipse,
   type MindMapArrow,
   type MindMapNode,
+  type MindMapCrossLink,
   type MindMapRectangle,
   type MindMapLine,
   type MindMapShape,
@@ -118,6 +119,11 @@ const LINE_MIN_THICKNESS = 1.2
 const LINE_HIT_PADDING = 6
 const LINE_DEFAULT_COLOR = '#22d3ee'
 const LINE_DEFAULT_ANGLE = 0
+const CROSS_LINK_COLOR_LIGHT = '#0ea5e9'
+const CROSS_LINK_COLOR_DARK = 'rgba(125, 211, 252, 0.85)'
+const CROSS_LINK_STROKE_WIDTH = 4
+const CROSS_LINK_MIN_CURVE_OFFSET = 120
+const CROSS_LINK_CURVE_SCALE = 0.35
 
 const KEYBOARD_SHORTCUTS: readonly { keys: string; description: string }[] = [
   { keys: 'Enter', description: 'Add a child idea to the selected node' },
@@ -178,6 +184,14 @@ const rotateAndTranslate = (point: Point, center: Point, angle: number): Point =
     x: rotated.x + center.x,
     y: rotated.y + center.y,
   }
+}
+
+const normalizeVector = (dx: number, dy: number): Point => {
+  const length = Math.hypot(dx, dy)
+  if (length === 0) {
+    return { x: 0, y: 0 }
+  }
+  return { x: dx / length, y: dy / length }
 }
 
 const enforceArrowHeadHeights = (rawHalfHeight: number, halfThickness: number) => {
@@ -579,7 +593,16 @@ export default function App() {
   const textInputRef = useRef<HTMLInputElement | null>(null)
   const pendingTextFocusRef = useRef(false)
   const {
-    state: { nodes, annotations, shapes, selectedNodeIds, selectedAnnotationId, selectedShapeId, history },
+    state: {
+      nodes,
+      annotations,
+      shapes,
+      crossLinks,
+      selectedNodeIds,
+      selectedAnnotationId,
+      selectedShapeId,
+      history,
+    },
     dispatch,
   } = useMindMap()
 
@@ -591,6 +614,7 @@ export default function App() {
   const selectedAnnotationRef = useRef(selectedAnnotationId)
   const shapesRef = useRef(shapes)
   const selectedShapeRef = useRef(selectedShapeId)
+  const crossLinksRef = useRef(crossLinks)
   const clipboardRef = useRef<ClipboardSnapshot | null>(null)
 
   const nodeById = useMemo(() => {
@@ -902,6 +926,7 @@ export default function App() {
     const selectedAnnotationId = selectedAnnotationRef.current
     const shapesToDraw = shapesRef.current
     const selectedShapeId = selectedShapeRef.current
+    const crossLinksToDraw = crossLinksRef.current
     const { scale, offsetX, offsetY } = viewRef.current
 
     context.clearRect(0, 0, width, height)
@@ -1117,11 +1142,16 @@ export default function App() {
           )
         }
 
-        context.restore()
-        return
-      }
-
       context.restore()
+      return
+    }
+
+    context.restore()
+  })
+
+    const nodeLayouts = new Map<string, NodeLabelLayout>()
+    nodesToDraw.forEach((node) => {
+      nodeLayouts.set(node.id, measureNodeLabel(node))
     })
 
     const connectionStrokeStyle =
@@ -1150,10 +1180,91 @@ export default function App() {
       context.stroke()
     })
 
+    if (crossLinksToDraw.length > 0) {
+      const crossLinkStrokeStyle =
+        backgroundTheme === 'dark' ? CROSS_LINK_COLOR_DARK : CROSS_LINK_COLOR_LIGHT
+      context.lineWidth = CROSS_LINK_STROKE_WIDTH
+      context.strokeStyle = crossLinkStrokeStyle
+
+      crossLinksToDraw.forEach((link) => {
+        const source = nodeMap.get(link.sourceId)
+        const target = nodeMap.get(link.targetId)
+        if (!source || !target) {
+          return
+        }
+
+        const sourceLayout = nodeLayouts.get(source.id)
+        const targetLayout = nodeLayouts.get(target.id)
+        if (!sourceLayout || !targetLayout) {
+          return
+        }
+
+        const dx = target.x - source.x
+        const dy = target.y - source.y
+        const distance = Math.hypot(dx, dy)
+        if (!Number.isFinite(distance) || distance < 1) {
+          return
+        }
+
+        const midpointX = (source.x + target.x) / 2
+        const midpointY = (source.y + target.y) / 2
+        const baseOffset = Math.max(
+          CROSS_LINK_MIN_CURVE_OFFSET,
+          distance * CROSS_LINK_CURVE_SCALE,
+        )
+        const perpX = (-dy / distance) * baseOffset
+        const perpY = (dx / distance) * baseOffset
+
+        const controlCandidates = [
+          { x: midpointX + perpX, y: midpointY + perpY },
+          { x: midpointX - perpX, y: midpointY - perpY },
+        ]
+
+        const clearanceScores = controlCandidates.map((candidate) => {
+          let clearance = Infinity
+          nodesToDraw.forEach((node) => {
+            const layout = nodeLayouts.get(node.id)
+            if (!layout) {
+              return
+            }
+            const radius = layout.radius
+            const distanceToCandidate =
+              Math.hypot(candidate.x - node.x, candidate.y - node.y) - radius
+            clearance = Math.min(clearance, distanceToCandidate)
+          })
+          return clearance
+        })
+
+        const bestIndex = clearanceScores[0] >= clearanceScores[1] ? 0 : 1
+        const control = controlCandidates[bestIndex]
+
+        const startDirection = normalizeVector(control.x - source.x, control.y - source.y)
+        const endDirection = normalizeVector(target.x - control.x, target.y - control.y)
+
+        const startPoint = {
+          x: source.x + startDirection.x * sourceLayout.radius,
+          y: source.y + startDirection.y * sourceLayout.radius,
+        }
+
+        const endPoint = {
+          x: target.x - endDirection.x * targetLayout.radius,
+          y: target.y - endDirection.y * targetLayout.radius,
+        }
+
+        context.beginPath()
+        context.moveTo(startPoint.x, startPoint.y)
+        context.quadraticCurveTo(control.x, control.y, endPoint.x, endPoint.y)
+        context.stroke()
+      })
+
+      context.lineWidth = connectionLineWidth
+      context.strokeStyle = connectionStrokeStyle
+    }
+
     nodesToDraw.forEach((node) => {
       const nodeX = node.x
       const nodeY = node.y
-      const layout = measureNodeLabel(node)
+      const layout = nodeLayouts.get(node.id) ?? measureNodeLabel(node)
       const radius = layout.radius
 
       context.fillStyle = node.color || DEFAULT_NODE_COLOR
@@ -1269,9 +1380,11 @@ export default function App() {
     selectedAnnotationRef.current = selectedAnnotationId
     shapesRef.current = shapes
     selectedShapeRef.current = selectedShapeId
+    crossLinksRef.current = crossLinks
     drawScene()
   }, [
     annotations,
+    crossLinks,
     nodes,
     selectedAnnotationId,
     selectedNodeIds,
@@ -2224,6 +2337,52 @@ export default function App() {
     requestTextEditorFocus()
   }, [dispatch, isLocked, nodes, primarySelectedNode, requestTextEditorFocus])
 
+  const handleAddCrossLink = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
+    if (selectedNodes.length < 2) {
+      return
+    }
+
+    const [firstNode, secondNode] = selectedNodes
+    if (!firstNode || !secondNode) {
+      return
+    }
+
+    const sourceId = firstNode.id
+    const targetId = secondNode.id
+
+    if (sourceId === targetId) {
+      return
+    }
+
+    const existingLink = crossLinks.find(
+      (link) =>
+        (link.sourceId === sourceId && link.targetId === targetId) ||
+        (link.sourceId === targetId && link.targetId === sourceId),
+    )
+
+    if (existingLink) {
+      dispatch({ type: 'DELETE_CROSS_LINK', crossLinkId: existingLink.id })
+      return
+    }
+
+    const newLinkId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `link-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    const crossLink: MindMapCrossLink = {
+      id: newLinkId,
+      sourceId,
+      targetId,
+    }
+
+    dispatch({ type: 'ADD_CROSS_LINK', crossLink })
+  }, [crossLinks, dispatch, isLocked, selectedNodes])
+
   const handleAddStandaloneNode = useCallback(() => {
     if (isLocked) {
       return
@@ -2577,6 +2736,10 @@ export default function App() {
       return false
     }
 
+    if (crossLinks.length > 0) {
+      return false
+    }
+
     if (nodes.length !== 1) {
       return false
     }
@@ -2594,7 +2757,7 @@ export default function App() {
       rootNode.y === 0 &&
       rootNode.color === DEFAULT_NODE_COLOR
     )
-  }, [annotations, nodes, shapes])
+  }, [annotations, crossLinks, nodes, shapes])
 
   const canClear = !isPristineState
 
@@ -2761,6 +2924,7 @@ export default function App() {
         nodes: nodes.map((node) => ({ ...node })),
         annotations: annotations.map((annotation) => ({ ...annotation })),
         shapes: shapes.map((shape) => ({ ...shape })),
+        crossLinks: crossLinks.map((link) => ({ ...link })),
         exportedAt: new Date().toISOString(),
       },
       null,
@@ -2774,7 +2938,7 @@ export default function App() {
     anchor.download = 'mindmap.json'
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [annotations, closeExportMenu, nodes, shapes])
+  }, [annotations, closeExportMenu, crossLinks, nodes, shapes])
 
   const handleExportPng = useCallback(() => {
     closeExportMenu()
@@ -3063,6 +3227,66 @@ export default function App() {
     }, [])
   }, [])
 
+  const sanitizeImportedCrossLinks = useCallback(
+    (value: unknown, nodeList: MindMapNode[]) => {
+      if (!Array.isArray(value) || nodeList.length === 0) {
+        return []
+      }
+
+      const nodeIds = new Set(nodeList.map((node) => node.id))
+      const seenPairs = new Set<string>()
+      const seenIds = new Set<string>()
+
+      return value.reduce<MindMapCrossLink[]>((accumulator, item) => {
+        if (!item || typeof item !== 'object') {
+          return accumulator
+        }
+
+        const link = item as Partial<MindMapCrossLink>
+
+        if (typeof link.id !== 'string') {
+          return accumulator
+        }
+
+        if (seenIds.has(link.id)) {
+          return accumulator
+        }
+
+        if (typeof link.sourceId !== 'string' || typeof link.targetId !== 'string') {
+          return accumulator
+        }
+
+        if (link.sourceId === link.targetId) {
+          return accumulator
+        }
+
+        if (!nodeIds.has(link.sourceId) || !nodeIds.has(link.targetId)) {
+          return accumulator
+        }
+
+        const [a, b] =
+          link.sourceId < link.targetId
+            ? [link.sourceId, link.targetId]
+            : [link.targetId, link.sourceId]
+        const key = `${a}::${b}`
+
+        if (seenPairs.has(key)) {
+          return accumulator
+        }
+
+        seenPairs.add(key)
+        seenIds.add(link.id)
+        accumulator.push({
+          id: link.id,
+          sourceId: link.sourceId,
+          targetId: link.targetId,
+        })
+        return accumulator
+      }, [])
+    },
+    [],
+  )
+
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       if (isLocked) {
@@ -3082,6 +3306,7 @@ export default function App() {
             nodes?: unknown
             annotations?: unknown
             shapes?: unknown
+            crossLinks?: unknown
           }
           const importedNodes = sanitizeImportedNodes(parsed.nodes)
           const importedAnnotations = sanitizeImportedAnnotations(parsed.annotations)
@@ -3092,11 +3317,17 @@ export default function App() {
             return
           }
 
+          const importedCrossLinks = sanitizeImportedCrossLinks(
+            parsed.crossLinks,
+            importedNodes,
+          )
+
           dispatch({
             type: 'IMPORT',
             nodes: importedNodes,
             annotations: importedAnnotations,
             shapes: importedShapes,
+            crossLinks: importedCrossLinks,
           })
         } catch (error) {
           console.error('Failed to import mind map', error)
@@ -3110,6 +3341,7 @@ export default function App() {
       dispatch,
       isLocked,
       sanitizeImportedAnnotations,
+      sanitizeImportedCrossLinks,
       sanitizeImportedNodes,
       sanitizeImportedShapes,
     ],
@@ -3286,6 +3518,13 @@ export default function App() {
   const shouldShowNodeColorControls = hasNodeSelection
   const isNodeColorDisabled = isLocked || !hasNodeSelection
   const nodeColorApplyTarget = selectedNodes.length > 1 ? 'all selected nodes' : 'the selected node'
+  const hasCrossLinkSelection = selectedNodes.length >= 2
+  const isCrossLinkButtonDisabled = isLocked || !hasCrossLinkSelection
+  const crossLinkButtonTitle = isLocked
+    ? 'Unlock edits to add a cross-link'
+    : hasCrossLinkSelection
+    ? 'Curve a cross-link between the first two selected ideas'
+    : 'Select two ideas to add a cross-link'
   const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
@@ -3349,6 +3588,26 @@ export default function App() {
                 +
               </span>
               <span className="visually-hidden">Add child idea</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddCrossLink}
+              title={crossLinkButtonTitle}
+              aria-label="Add cross-link"
+              className="mindmap-toolbar__symbol-button"
+              disabled={isCrossLinkButtonDisabled}
+            >
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--cross-link"
+              >
+                ∿
+              </span>
+              <span className="visually-hidden">
+                {isCrossLinkButtonDisabled
+                  ? 'Select two ideas to add a cross-link'
+                  : 'Add a cross-link between the first two selected ideas'}
+              </span>
             </button>
             <button
               type="button"

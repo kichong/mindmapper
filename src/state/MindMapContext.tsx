@@ -94,6 +94,12 @@ export interface MindMapLine {
   color: string
 }
 
+export interface MindMapCrossLink {
+  id: string
+  sourceId: string
+  targetId: string
+}
+
 export type MindMapShape =
   | MindMapRing
   | MindMapEllipse
@@ -112,6 +118,7 @@ interface MindMapSnapshot {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
   shapes: MindMapShape[]
+  crossLinks: MindMapCrossLink[]
 }
 
 interface MindMapHistory {
@@ -123,6 +130,7 @@ export interface MindMapState {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
   shapes: MindMapShape[]
+  crossLinks: MindMapCrossLink[]
   selectedNodeIds: string[]
   selectedAnnotationId: string | null
   selectedShapeId: string | null
@@ -153,6 +161,8 @@ type MindMapAction =
   | { type: 'UPDATE_SHAPE'; shapeId: string; updates: MindMapShapeUpdate }
   | { type: 'MOVE_SHAPE'; shapeId: string; x: number; y: number }
   | { type: 'DELETE_SHAPE'; shapeId: string }
+  | { type: 'ADD_CROSS_LINK'; crossLink: MindMapCrossLink }
+  | { type: 'DELETE_CROSS_LINK'; crossLinkId: string }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | {
@@ -160,6 +170,7 @@ type MindMapAction =
       nodes: MindMapNode[]
       annotations?: MindMapAnnotation[]
       shapes?: MindMapShape[]
+      crossLinks?: MindMapCrossLink[]
     }
   | { type: 'EXPORT' }
   | { type: 'SELECT_ANNOTATION'; annotationId: string | null }
@@ -188,6 +199,7 @@ const initialState: MindMapState = {
   ],
   annotations: [],
   shapes: [],
+  crossLinks: [],
   selectedNodeIds: [ROOT_NODE_ID],
   selectedAnnotationId: null,
   selectedShapeId: null,
@@ -404,6 +416,28 @@ function isMindMapShape(value: unknown): value is MindMapShape {
   return false
 }
 
+function isMindMapCrossLink(value: unknown): value is MindMapCrossLink {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const link = value as Partial<MindMapCrossLink>
+
+  if (typeof link.id !== 'string') {
+    return false
+  }
+
+  if (typeof link.sourceId !== 'string' || typeof link.targetId !== 'string') {
+    return false
+  }
+
+  if (link.sourceId === link.targetId) {
+    return false
+  }
+
+  return true
+}
+
 function loadPersistedState(): MindMapState {
   if (typeof window === 'undefined') {
     return initialState
@@ -422,6 +456,7 @@ function loadPersistedState(): MindMapState {
       selectedNodeIds?: unknown
       selectedAnnotationId?: unknown
       shapes?: unknown
+      crossLinks?: unknown
       selectedShapeId?: unknown
     }
 
@@ -441,6 +476,13 @@ function loadPersistedState(): MindMapState {
     const shapes = Array.isArray(parsed.shapes) ? parsed.shapes.filter(isMindMapShape) : []
 
     const existingNodeIds = new Set(nodes.map((node) => node.id))
+    const crossLinks = Array.isArray(parsed.crossLinks)
+      ? parsed.crossLinks
+          .filter(isMindMapCrossLink)
+          .filter(
+            (link) => existingNodeIds.has(link.sourceId) && existingNodeIds.has(link.targetId),
+          )
+      : []
     const parsedNodeIds = Array.isArray(parsed.selectedNodeIds)
       ? parsed.selectedNodeIds.filter((value): value is string => typeof value === 'string')
       : []
@@ -474,6 +516,7 @@ function loadPersistedState(): MindMapState {
       nodes: nodes.map((node) => ({ ...node })),
       annotations: annotations.map((annotation) => ({ ...annotation })),
       shapes: shapes.map((shape) => ({ ...shape })),
+      crossLinks: crossLinks.map((link) => ({ ...link })),
       selectedNodeIds,
       selectedAnnotationId,
       selectedShapeId,
@@ -500,11 +543,16 @@ function cloneShapes(shapes: MindMapShape[]) {
   return shapes.map((shape) => ({ ...shape }))
 }
 
+function cloneCrossLinks(crossLinks: MindMapCrossLink[]) {
+  return crossLinks.map((link) => ({ ...link }))
+}
+
 function cloneSnapshot(state: MindMapState): MindMapSnapshot {
   return {
     nodes: cloneNodes(state.nodes),
     annotations: cloneAnnotations(state.annotations),
     shapes: cloneShapes(state.shapes),
+    crossLinks: cloneCrossLinks(state.crossLinks),
   }
 }
 
@@ -514,6 +562,7 @@ function commitState(
     nodes = state.nodes,
     annotations = state.annotations,
     shapes = state.shapes,
+    crossLinks = state.crossLinks,
     selectedNodeIds = state.selectedNodeIds,
     selectedAnnotationId = state.selectedAnnotationId,
     selectedShapeId = state.selectedShapeId,
@@ -521,6 +570,7 @@ function commitState(
     nodes?: MindMapNode[]
     annotations?: MindMapAnnotation[]
     shapes?: MindMapShape[]
+    crossLinks?: MindMapCrossLink[]
     selectedNodeIds?: string[]
     selectedAnnotationId?: string | null
     selectedShapeId?: string | null
@@ -530,6 +580,7 @@ function commitState(
     nodes,
     annotations,
     shapes,
+    crossLinks,
     selectedNodeIds: [...selectedNodeIds],
     selectedAnnotationId,
     selectedShapeId,
@@ -629,6 +680,10 @@ function deleteNodes(state: MindMapState, nodeIds: string[]): MindMapState {
   const remainingSelection = state.selectedNodeIds.filter((id) => !removedIds.has(id))
   const remainingNodeIds = new Set(nextNodes.map((node) => node.id))
 
+  const nextCrossLinks = state.crossLinks.filter(
+    (link) => !removedIds.has(link.sourceId) && !removedIds.has(link.targetId),
+  )
+
   let selectedNodeIds = [...remainingSelection]
 
   if (selectedNodeIds.length === 0) {
@@ -646,6 +701,7 @@ function deleteNodes(state: MindMapState, nodeIds: string[]): MindMapState {
 
   return commitState(state, {
     nodes: nextNodes,
+    crossLinks: nextCrossLinks,
     selectedNodeIds,
   })
 }
@@ -838,8 +894,9 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         state.nodes[0]?.textSize !== 'medium'
 
       const hasShapes = state.shapes.length > 0
+      const hasCrossLinks = state.crossLinks.length > 0
 
-      if (!hasExtraNodes && state.annotations.length === 0 && !hasShapes) {
+      if (!hasExtraNodes && state.annotations.length === 0 && !hasShapes && !hasCrossLinks) {
         return state
       }
 
@@ -857,6 +914,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: [resetRoot],
         annotations: [],
         shapes: [],
+        crossLinks: [],
         selectedNodeIds: [ROOT_NODE_ID],
         selectedAnnotationId: null,
         selectedShapeId: null,
@@ -979,6 +1037,39 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         selectedShapeId,
       })
     }
+    case 'ADD_CROSS_LINK': {
+      const { sourceId, targetId } = action.crossLink
+      if (sourceId === targetId) {
+        return state
+      }
+
+      const hasSource = state.nodes.some((node) => node.id === sourceId)
+      const hasTarget = state.nodes.some((node) => node.id === targetId)
+      if (!hasSource || !hasTarget) {
+        return state
+      }
+
+      const isDuplicate = state.crossLinks.some(
+        (link) =>
+          (link.sourceId === sourceId && link.targetId === targetId) ||
+          (link.sourceId === targetId && link.targetId === sourceId),
+      )
+
+      if (isDuplicate) {
+        return state
+      }
+
+      const nextCrossLinks = [...state.crossLinks, { ...action.crossLink }]
+      return commitState(state, { crossLinks: nextCrossLinks })
+    }
+    case 'DELETE_CROSS_LINK': {
+      if (!state.crossLinks.some((link) => link.id === action.crossLinkId)) {
+        return state
+      }
+
+      const nextCrossLinks = state.crossLinks.filter((link) => link.id !== action.crossLinkId)
+      return commitState(state, { crossLinks: nextCrossLinks })
+    }
     case 'UNDO': {
       if (state.history.past.length === 0) {
         return state
@@ -1017,6 +1108,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: cloneNodes(previousSnapshot.nodes),
         annotations: cloneAnnotations(previousSnapshot.annotations),
         shapes: cloneShapes(previousSnapshot.shapes),
+        crossLinks: cloneCrossLinks(previousSnapshot.crossLinks),
         selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
@@ -1061,6 +1153,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         nodes: cloneNodes(nextSnapshot.nodes),
         annotations: cloneAnnotations(nextSnapshot.annotations),
         shapes: cloneShapes(nextSnapshot.shapes),
+        crossLinks: cloneCrossLinks(nextSnapshot.crossLinks),
         selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
@@ -1076,10 +1169,12 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
         ? cloneAnnotations(action.annotations)
         : []
       const importedShapes = action.shapes ? cloneShapes(action.shapes) : []
+      const importedCrossLinks = action.crossLinks ? cloneCrossLinks(action.crossLinks) : []
       return {
         nodes: importedNodes,
         annotations: importedAnnotations,
         shapes: importedShapes,
+        crossLinks: importedCrossLinks,
         selectedNodeIds: importedNodes[0] ? [importedNodes[0].id] : [],
         selectedAnnotationId: importedAnnotations[0]?.id ?? null,
         selectedShapeId: importedShapes[0]?.id ?? null,
@@ -1191,6 +1286,7 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
       nodes: state.nodes,
       annotations: state.annotations,
       shapes: state.shapes,
+      crossLinks: state.crossLinks,
       selectedNodeIds: state.selectedNodeIds,
       selectedAnnotationId: state.selectedAnnotationId,
       selectedShapeId: state.selectedShapeId,
@@ -1203,6 +1299,7 @@ export function MindMapProvider({ children }: { children: React.ReactNode }) {
     }
   }, [
     state.annotations,
+    state.crossLinks,
     state.nodes,
     state.selectedAnnotationId,
     state.selectedNodeIds,

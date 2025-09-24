@@ -4,6 +4,7 @@ Mindmapper is a React + canvas app for sketching mind maps directly in the brows
 
 ## What you can do today
 - **Grow ideas visually.** Drag nodes, add children with the toolbar or keyboard (`Enter`), and remove them with `Delete` / `Backspace`. Connectors redraw automatically as you move items.
+- **Connect ideas beyond the tree.** Multi-select any two nodes and tap the curved link button to add a cross-link. The app curves the connector around nearby nodes so lateral relationships stay readable.
 - **Format content from one toolbar.** A single text editor and size dropdown updates whichever node, floating annotation, or shape label is selected. Double-clicking a node opens the toolbar and moves focus into the text field so you can keep typing.
 - **Drop in callouts and shapes.** Place floating annotations, rings, ellipses, rectangles, arrows, and lines. Each shape has a golden resize handle that controls thickness, size, and angle (for arrows and lines).
 - **Control the canvas.** Pan with the arrow keys or on-screen D-pad, zoom between 25% and 250%, auto-center the map, toggle light/dark canvas backgrounds, and lock the canvas to prevent accidental edits.
@@ -48,6 +49,7 @@ The importer expects three arrays in every snapshot:
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
   shapes: MindMapShape[]
+  crossLinks: MindMapCrossLink[]
 }
 ```
 
@@ -56,6 +58,8 @@ Each node records its unique `id`, the `parentId` (use `null` for the root), dis
 Annotations store `id`, `text`, `x`, `y`, and `textSize` so they can float independently of the node tree.
 
 Shapes cover rings, ellipses, rectangles, arrows, and lines. Every shape includes an `id`, `kind`, center coordinates (`x`, `y`), and size fields specific to the shape (for example `radius` for rings, `width`/`height` for rectangles). Thickness and `color` let you style them. Optional angle fields control rotation where relevant.
+
+Cross-links capture lateral connections between ideas. Each record stores an `id`, the `sourceId` and `targetId` (node ids), and the canvas automatically curves the link between the two when rendering.
 
 Review `AGENTMAPS/mindmapper-guide.json` for a working example that matches what the importer expects.
 
