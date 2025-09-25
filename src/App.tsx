@@ -3559,22 +3559,6 @@ export default function App() {
           <div className="mindmap-toolbar__header-actions">
             <button
               type="button"
-              onClick={handleAddStandaloneNode}
-              title="Shift + Enter to add a new detached idea"
-              aria-label="Add new idea"
-              className="mindmap-toolbar__symbol-button"
-              disabled={isLocked}
-            >
-              <span
-                aria-hidden="true"
-                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
-              >
-                ×
-              </span>
-              <span className="visually-hidden">Add new idea</span>
-            </button>
-            <button
-              type="button"
               onClick={handleAddChild}
               title="Enter to add a child idea"
               aria-label="Add child idea"
@@ -3588,6 +3572,22 @@ export default function App() {
                 +
               </span>
               <span className="visually-hidden">Add child idea</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddStandaloneNode}
+              title="Shift + Enter to add a new detached idea"
+              aria-label="Add new idea"
+              className="mindmap-toolbar__symbol-button"
+              disabled={isLocked}
+            >
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
+              >
+                ×
+              </span>
+              <span className="visually-hidden">Add new idea</span>
             </button>
             <button
               type="button"
