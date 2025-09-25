@@ -1,0 +1,247 @@
+{
+  "nodes": [
+    {
+      "id": "root",
+      "parentId": null,
+      "text": "Creative Workshop",
+      "x": 0,
+      "y": 0,
+      "color": "#4f46e5",
+      "textSize": "large"
+    },
+    {
+      "id": "ideation",
+      "parentId": "root",
+      "text": "Ideation",
+      "x": -360,
+      "y": -20,
+      "color": "#22d3ee",
+      "textSize": "medium"
+    },
+    {
+      "id": "story",
+      "parentId": "root",
+      "text": "Story",
+      "x": 360,
+      "y": -20,
+      "color": "#f97316",
+      "textSize": "medium"
+    },
+    {
+      "id": "prototype",
+      "parentId": "root",
+      "text": "Prototype",
+      "x": -360,
+      "y": 260,
+      "color": "#10b981",
+      "textSize": "medium"
+    },
+    {
+      "id": "feedback",
+      "parentId": "root",
+      "text": "Feedback",
+      "x": 360,
+      "y": 260,
+      "color": "#6366f1",
+      "textSize": "medium"
+    },
+    {
+      "id": "brainstorm",
+      "parentId": "ideation",
+      "text": "Lightning brainstorm",
+      "x": -540,
+      "y": 120,
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "moodboard",
+      "parentId": "ideation",
+      "text": "Moodboard cues",
+      "x": -360,
+      "y": 120,
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "sparks",
+      "parentId": "ideation",
+      "text": "Idea sparks",
+      "x": -180,
+      "y": 120,
+      "color": "#38bdf8",
+      "textSize": "small"
+    },
+    {
+      "id": "story-arc",
+      "parentId": "story",
+      "text": "Plot arc",
+      "x": 180,
+      "y": 120,
+      "color": "#fb923c",
+      "textSize": "small"
+    },
+    {
+      "id": "persona",
+      "parentId": "story",
+      "text": "Hero persona",
+      "x": 360,
+      "y": 120,
+      "color": "#fb923c",
+      "textSize": "small"
+    },
+    {
+      "id": "script",
+      "parentId": "story",
+      "text": "Narrative script",
+      "x": 540,
+      "y": 120,
+      "color": "#fb923c",
+      "textSize": "small"
+    },
+    {
+      "id": "prototype-sprint",
+      "parentId": "prototype",
+      "text": "Rapid sprint",
+      "x": -540,
+      "y": 400,
+      "color": "#34d399",
+      "textSize": "small"
+    },
+    {
+      "id": "prototype-tools",
+      "parentId": "prototype",
+      "text": "Tools & materials",
+      "x": -360,
+      "y": 400,
+      "color": "#34d399",
+      "textSize": "small"
+    },
+    {
+      "id": "prototype-demo",
+      "parentId": "prototype",
+      "text": "Demo storyboard",
+      "x": -180,
+      "y": 400,
+      "color": "#34d399",
+      "textSize": "small"
+    },
+    {
+      "id": "feedback-share",
+      "parentId": "feedback",
+      "text": "Share session",
+      "x": 180,
+      "y": 400,
+      "color": "#a855f7",
+      "textSize": "small"
+    },
+    {
+      "id": "feedback-observe",
+      "parentId": "feedback",
+      "text": "Observe reactions",
+      "x": 360,
+      "y": 400,
+      "color": "#a855f7",
+      "textSize": "small"
+    },
+    {
+      "id": "feedback-iterate",
+      "parentId": "feedback",
+      "text": "Iterate & polish",
+      "x": 540,
+      "y": 400,
+      "color": "#a855f7",
+      "textSize": "small"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "annotation-center",
+      "text": "Aim: launch a playful story-driven product",
+      "x": 0,
+      "y": -220,
+      "textSize": "medium"
+    },
+    {
+      "id": "annotation-feedback",
+      "text": "Collect 5 user reactions per round",
+      "x": 360,
+      "y": 520,
+      "textSize": "small"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "ring-root",
+      "kind": "ring",
+      "x": 0,
+      "y": 0,
+      "radius": 200,
+      "thickness": 10,
+      "color": "#c4b5fd"
+    },
+    {
+      "id": "rectangle-prototype",
+      "kind": "rectangle",
+      "x": -360,
+      "y": 320,
+      "width": 420,
+      "height": 220,
+      "thickness": 6,
+      "color": "#14b8a6"
+    },
+    {
+      "id": "ellipse-feedback",
+      "kind": "ellipse",
+      "x": 360,
+      "y": 320,
+      "radiusX": 320,
+      "radiusY": 200,
+      "thickness": 6,
+      "color": "#a855f7"
+    },
+    {
+      "id": "arrow-handOff",
+      "kind": "arrow",
+      "x": -60,
+      "y": 360,
+      "width": 440,
+      "height": 200,
+      "thickness": 48,
+      "angle": -0.4,
+      "color": "#f97316"
+    },
+    {
+      "id": "line-timeline",
+      "kind": "line",
+      "x": 0,
+      "y": 520,
+      "length": 720,
+      "thickness": 12,
+      "angle": 0,
+      "color": "#0f172a"
+    }
+  ],
+  "crossLinks": [
+    {
+      "id": "link-sparks-arc",
+      "sourceId": "sparks",
+      "targetId": "story-arc"
+    },
+    {
+      "id": "link-brainstorm-persona",
+      "sourceId": "brainstorm",
+      "targetId": "persona"
+    },
+    {
+      "id": "link-demo-share",
+      "sourceId": "prototype-demo",
+      "targetId": "feedback-share"
+    },
+    {
+      "id": "link-iterate-sprint",
+      "sourceId": "feedback-iterate",
+      "targetId": "prototype-sprint"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "metadata": {
+    "title": "Forest Axis Guide",
+    "exportedAt": "2024-05-01T12:00:00Z",
+    "canvas": { "width": 1440, "height": 900 }
+  },
+  "nodes": [
+    {
+      "id": "6d2f7c4e-5c08-4b6b-9956-01b587fd34de",
+      "parentId": null,
+      "text": "Canopy Stories",
+      "x": -420,
+      "y": -120,
+      "color": "#4ade80",
+      "textSize": "large"
+    },
+    {
+      "id": "70d409fb-1d18-40cf-8f40-9b393d9301d5",
+      "parentId": "6d2f7c4e-5c08-4b6b-9956-01b587fd34de",
+      "text": "Mist Trail",
+      "x": -620,
+      "y": 80,
+      "color": "#2dd4bf",
+      "textSize": "medium"
+    },
+    {
+      "id": "f3416ea2-3f35-46ba-9b62-45fba669c373",
+      "parentId": "6d2f7c4e-5c08-4b6b-9956-01b587fd34de",
+      "text": "Sunlit Clearing",
+      "x": -420,
+      "y": 80,
+      "color": "#22d3ee",
+      "textSize": "medium"
+    },
+    {
+      "id": "1d1f8f91-86fa-4a2a-9c72-d471f32be669",
+      "parentId": "6d2f7c4e-5c08-4b6b-9956-01b587fd34de",
+      "text": "Ferns",
+      "x": -220,
+      "y": 80,
+      "color": "#c084fc",
+      "textSize": "small"
+    },
+    {
+      "id": "1b1e6f5f-53b0-438a-ae3e-f0d66c6653d5",
+      "parentId": null,
+      "text": "Ridge Lines",
+      "x": 420,
+      "y": -120,
+      "color": "#818cf8",
+      "textSize": "large"
+    },
+    {
+      "id": "c8b105f1-ecac-45fb-a4d5-a938615c5f75",
+      "parentId": "1b1e6f5f-53b0-438a-ae3e-f0d66c6653d5",
+      "text": "Echo Rock",
+      "x": 220,
+      "y": 80,
+      "color": "#f97316",
+      "textSize": "medium"
+    },
+    {
+      "id": "8fcbec03-d532-4fb6-9252-d470f0c6c319",
+      "parentId": "1b1e6f5f-53b0-438a-ae3e-f0d66c6653d5",
+      "text": "Sky Bridge",
+      "x": 420,
+      "y": 80,
+      "color": "#f472b6",
+      "textSize": "medium"
+    },
+    {
+      "id": "a837c600-71ae-4a3c-9b4d-6a9710c96cb1",
+      "parentId": "1b1e6f5f-53b0-438a-ae3e-f0d66c6653d5",
+      "text": "Stone Steps",
+      "x": 620,
+      "y": 80,
+      "color": "#22c55e",
+      "textSize": "small"
+    },
+    {
+      "id": "652bfed8-f9a5-4c8b-8c33-fbf1df0f8179",
+      "parentId": null,
+      "text": "Understory Lab",
+      "x": 0,
+      "y": 260,
+      "color": "#eab308",
+      "textSize": "large"
+    },
+    {
+      "id": "cb6f62d7-8097-4bb0-94f3-0d8a9f0f1e7d",
+      "parentId": "652bfed8-f9a5-4c8b-8c33-fbf1df0f8179",
+      "text": "Biolumens",
+      "x": -180,
+      "y": 460,
+      "color": "#14b8a6",
+      "textSize": "medium"
+    },
+    {
+      "id": "1a3501cd-45df-45db-8c09-2d9aeff1053a",
+      "parentId": "652bfed8-f9a5-4c8b-8c33-fbf1df0f8179",
+      "text": "Soil Chorus",
+      "x": 0,
+      "y": 460,
+      "color": "#facc15",
+      "textSize": "medium"
+    },
+    {
+      "id": "0a38509d-5e17-40d8-9f16-6f9a9a961e16",
+      "parentId": "652bfed8-f9a5-4c8b-8c33-fbf1df0f8179",
+      "text": "Mycelium Grid",
+      "x": 180,
+      "y": 460,
+      "color": "#a855f7",
+      "textSize": "medium"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "932bb49a-6c0a-426f-baf1-6549d1593a09",
+      "text": "Skyline Axis",
+      "x": 0,
+      "y": 20,
+      "textSize": "large"
+    },
+    {
+      "id": "f0f0ee5a-e0d6-4a4e-a06d-2efb77703fb7",
+      "text": "Forest field notes stay 120 px above the horizon line.",
+      "x": 0,
+      "y": -60,
+      "textSize": "small"
+    }
+  ],
+  "shapes": [
+    {
+      "id": "2d1f6c59-9c9f-4f5d-bf44-4c96fc8fc9bb",
+      "kind": "line",
+      "x": 0,
+      "y": 120,
+      "length": 1584,
+      "angle": 0.01,
+      "thickness": 2,
+      "color": "#38bdf8"
+    },
+    {
+      "id": "69b472eb-3f70-4bc2-8f5e-8b38c386807f",
+      "kind": "ring",
+      "x": -420,
+      "y": -10,
+      "radius": 200,
+      "thickness": 16,
+      "color": "#22d3ee"
+    },
+    {
+      "id": "71446f48-343c-4ac6-8578-757d3f8121e6",
+      "kind": "ring",
+      "x": 420,
+      "y": -10,
+      "radius": 200,
+      "thickness": 16,
+      "color": "#818cf8"
+    },
+    {
+      "id": "3d0f29a2-0c4a-47dd-8bb5-3c1ff6506ac1",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 360,
+      "width": 420,
+      "height": 260,
+      "color": "#facc15"
+    },
+    {
+      "id": "5f0f3a5c-997f-4ad6-8b51-0fa3c410f396",
+      "kind": "arrow",
+      "x": -200,
+      "y": 220,
+      "length": 260,
+      "angle": -0.6,
+      "thickness": 8,
+      "color": "#f97316"
+    }
+  ],
+  "crossLinks": [
+    {
+      "id": "f0ef3d75-9c8c-4b6e-a41e-f29a56b612d0",
+      "sourceId": "f3416ea2-3f35-46ba-9b62-45fba669c373",
+      "targetId": "8fcbec03-d532-4fb6-9252-d470f0c6c319",
+      "metadata": { "note": "Bridge between canopy and ridge skies" }
+    },
+    {
+      "id": "a0e4a296-3a5d-44f6-b865-7768dd4a12ad",
+      "sourceId": "cb6f62d7-8097-4bb0-94f3-0d8a9f0f1e7d",
+      "targetId": "70d409fb-1d18-40cf-8f40-9b393d9301d5"
+    },
+    {
+      "id": "6cfbd9cd-5d39-4a1d-9db1-43859d8b460c",
+      "sourceId": "1a3501cd-45df-45db-8c09-2d9aeff1053a",
+      "targetId": "c8b105f1-ecac-45fb-a4d5-a938615c5f75"
+    }
+  ]
+}
