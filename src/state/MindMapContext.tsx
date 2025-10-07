@@ -114,6 +114,21 @@ type MindMapShapeUpdate =
   | Partial<Omit<MindMapArrow, 'id' | 'kind'>>
   | Partial<Omit<MindMapLine, 'id' | 'kind'>>
 
+const TRANSIENT_SHAPE_KEYS = [
+  'x',
+  'y',
+  'radius',
+  'radiusX',
+  'radiusY',
+  'width',
+  'height',
+  'thickness',
+  'angle',
+  'length',
+] as const
+
+const TRANSIENT_SHAPE_KEY_SET = new Set<string>(TRANSIENT_SHAPE_KEYS)
+
 interface MindMapSnapshot {
   nodes: MindMapNode[]
   annotations: MindMapAnnotation[]
@@ -556,6 +571,59 @@ function cloneSnapshot(state: MindMapState): MindMapSnapshot {
   }
 }
 
+function mergeLayoutSnapshot(
+  snapshot: MindMapSnapshot,
+  state: MindMapState,
+): MindMapSnapshot {
+  const nodeLayout = new Map(state.nodes.map((node) => [node.id, node]))
+  const annotationLayout = new Map(state.annotations.map((annotation) => [annotation.id, annotation]))
+  const shapeLayout = new Map(state.shapes.map((shape) => [shape.id, shape]))
+
+  const nodes = snapshot.nodes.map((node) => {
+    const live = nodeLayout.get(node.id)
+    if (!live) {
+      return { ...node }
+    }
+
+    return { ...node, x: live.x, y: live.y }
+  })
+
+  const annotations = snapshot.annotations.map((annotation) => {
+    const live = annotationLayout.get(annotation.id)
+    if (!live) {
+      return { ...annotation }
+    }
+
+    return { ...annotation, x: live.x, y: live.y }
+  })
+
+  const shapes = snapshot.shapes.map((shape) => {
+    const live = shapeLayout.get(shape.id)
+    if (!live) {
+      return { ...shape }
+    }
+
+    const merged = { ...shape } as MindMapShape
+    const mergedRecord = merged as unknown as Record<string, unknown>
+    const liveRecord = live as unknown as Record<string, unknown>
+
+    TRANSIENT_SHAPE_KEY_SET.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(liveRecord, key)) {
+        mergedRecord[key] = liveRecord[key]
+      }
+    })
+
+    return merged
+  })
+
+  return {
+    nodes,
+    annotations,
+    shapes,
+    crossLinks: snapshot.crossLinks.map((link) => ({ ...link })),
+  }
+}
+
 function commitState(
   state: MindMapState,
   {
@@ -714,7 +782,7 @@ function moveNodes(
     return state
   }
 
-  const updateMap = new Map<string, { x: number; y: number }>()
+  const updateMap = new Map<string, Partial<MindMapNode>>()
   updates.forEach((update) => {
     if (typeof update.nodeId !== 'string') {
       return
@@ -733,15 +801,21 @@ function moveNodes(
       return node
     }
 
-    if (node.x === position.x && node.y === position.y) {
+    const { x, y } = position
+
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      return node
+    }
+
+    if (node.x === x && node.y === y) {
       return node
     }
 
     didChange = true
     return {
       ...node,
-      x: position.x,
-      y: position.y,
+      x,
+      y,
     }
   })
 
@@ -749,7 +823,82 @@ function moveNodes(
     return state
   }
 
-  return commitState(state, { nodes: nextNodes })
+  return {
+    ...state,
+    nodes: nextNodes,
+  }
+}
+
+function moveAnnotation(
+  state: MindMapState,
+  annotationId: string,
+  position: { x: number; y: number },
+): MindMapState {
+  let didChange = false
+
+  const nextAnnotations = state.annotations.map((annotation) => {
+    if (annotation.id !== annotationId) {
+      return annotation
+    }
+
+    const { x, y } = position
+
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      return annotation
+    }
+
+    if (annotation.x === x && annotation.y === y) {
+      return annotation
+    }
+
+    didChange = true
+    return { ...annotation, x, y }
+  })
+
+  if (!didChange) {
+    return state
+  }
+
+  return {
+    ...state,
+    annotations: nextAnnotations,
+  }
+}
+
+function moveShape(
+  state: MindMapState,
+  shapeId: string,
+  position: { x: number; y: number },
+): MindMapState {
+  let didChange = false
+
+  const nextShapes = state.shapes.map((shape) => {
+    if (shape.id !== shapeId) {
+      return shape
+    }
+
+    const { x, y } = position
+
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      return shape
+    }
+
+    if (shape.x === x && shape.y === y) {
+      return shape
+    }
+
+    didChange = true
+    return { ...shape, x, y }
+  })
+
+  if (!didChange) {
+    return state
+  }
+
+  return {
+    ...state,
+    shapes: nextShapes,
+  }
 }
 
 function updateNodes(
@@ -938,16 +1087,7 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       return commitState(state, { annotations: nextAnnotations })
     }
     case 'MOVE_ANNOTATION': {
-      const nextAnnotations = state.annotations.map((annotation) =>
-        annotation.id === action.annotationId
-          ? {
-              ...annotation,
-              x: action.x,
-              y: action.y,
-            }
-          : annotation,
-      )
-      return commitState(state, { annotations: nextAnnotations })
+      return moveAnnotation(state, action.annotationId, { x: action.x, y: action.y })
     }
     case 'DELETE_ANNOTATION': {
       if (!state.annotations.some((annotation) => annotation.id === action.annotationId)) {
@@ -978,47 +1118,66 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       })
     }
     case 'UPDATE_SHAPE': {
+      const updateEntries = Object.entries(action.updates).filter(
+        ([, value]) => value !== undefined,
+      ) as [keyof MindMapShapeUpdate, unknown][]
+
+      if (updateEntries.length === 0) {
+        return state
+      }
+
+      let didChange = false
+      let changedEntries: [string, unknown][] = []
+
       const nextShapes = state.shapes.map((shape) => {
         if (shape.id !== action.shapeId) {
           return shape
         }
 
-        if (shape.kind === 'ring') {
-          const updates = action.updates as Partial<Omit<MindMapRing, 'id' | 'kind'>>
-          return { ...shape, ...updates, id: shape.id, kind: 'ring' as const }
+        const nextShape: MindMapShape = { ...shape }
+        const localChanges: [string, unknown][] = []
+
+        updateEntries.forEach(([key, value]) => {
+          const keyName = key as string
+          if (keyName === 'id' || keyName === 'kind') {
+            return
+          }
+
+          const typedKey = key as keyof MindMapShape
+          if ((nextShape as MindMapShape)[typedKey] === value) {
+            return
+          }
+
+          localChanges.push([keyName, value])
+          ;(nextShape as Record<keyof MindMapShape, unknown>)[typedKey] = value
+        })
+
+        if (localChanges.length === 0) {
+          return shape
         }
 
-        if (shape.kind === 'ellipse') {
-          const updates = action.updates as Partial<Omit<MindMapEllipse, 'id' | 'kind'>>
-          return { ...shape, ...updates, id: shape.id, kind: 'ellipse' as const }
-        }
-
-        if (shape.kind === 'rectangle') {
-          const updates = action.updates as Partial<Omit<MindMapRectangle, 'id' | 'kind'>>
-          return { ...shape, ...updates, id: shape.id, kind: 'rectangle' as const }
-        }
-
-        if (shape.kind === 'arrow') {
-          const updates = action.updates as Partial<Omit<MindMapArrow, 'id' | 'kind'>>
-          return { ...shape, ...updates, id: shape.id, kind: 'arrow' as const }
-        }
-
-        const updates = action.updates as Partial<Omit<MindMapLine, 'id' | 'kind'>>
-        return { ...shape, ...updates, id: shape.id, kind: 'line' as const }
+        didChange = true
+        changedEntries = localChanges
+        return nextShape
       })
-      return commitState(state, { shapes: nextShapes })
+
+      if (!didChange || changedEntries.length === 0) {
+        return state
+      }
+
+      const isTransient = changedEntries.every(([key]) => TRANSIENT_SHAPE_KEY_SET.has(key))
+
+      if (!isTransient) {
+        return commitState(state, { shapes: nextShapes })
+      }
+
+      return {
+        ...state,
+        shapes: nextShapes,
+      }
     }
     case 'MOVE_SHAPE': {
-      const nextShapes = state.shapes.map((shape) =>
-        shape.id === action.shapeId
-          ? {
-              ...shape,
-              x: action.x,
-              y: action.y,
-            }
-          : shape,
-      )
-      return commitState(state, { shapes: nextShapes })
+      return moveShape(state, action.shapeId, { x: action.x, y: action.y })
     }
     case 'DELETE_SHAPE': {
       if (!state.shapes.some((shape) => shape.id === action.shapeId)) {
@@ -1078,11 +1237,13 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       const past = state.history.past.slice(0, -1)
       const future = [cloneSnapshot(state), ...state.history.future]
 
+      const mergedSnapshot = mergeLayoutSnapshot(previousSnapshot, state)
+
       const normalizedSelection = normalizeSelectedNodeIds(
         state.selectedNodeIds,
-        previousSnapshot.nodes,
+        mergedSnapshot.nodes,
       )
-      const fallbackNodeId = previousSnapshot.nodes[0]?.id
+      const fallbackNodeId = mergedSnapshot.nodes[0]?.id
       const selectedNodeIds =
         normalizedSelection.length > 0
           ? normalizedSelection
@@ -1092,23 +1253,23 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
 
       const selectedAnnotationId =
         state.selectedAnnotationId &&
-        previousSnapshot.annotations.some(
+        mergedSnapshot.annotations.some(
           (annotation) => annotation.id === state.selectedAnnotationId,
         )
           ? state.selectedAnnotationId
-          : previousSnapshot.annotations[0]?.id ?? null
+          : mergedSnapshot.annotations[0]?.id ?? null
 
       const selectedShapeId =
         state.selectedShapeId &&
-        previousSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
+        mergedSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
           ? state.selectedShapeId
-          : previousSnapshot.shapes[0]?.id ?? null
+          : mergedSnapshot.shapes[0]?.id ?? null
 
       return {
-        nodes: cloneNodes(previousSnapshot.nodes),
-        annotations: cloneAnnotations(previousSnapshot.annotations),
-        shapes: cloneShapes(previousSnapshot.shapes),
-        crossLinks: cloneCrossLinks(previousSnapshot.crossLinks),
+        nodes: cloneNodes(mergedSnapshot.nodes),
+        annotations: cloneAnnotations(mergedSnapshot.annotations),
+        shapes: cloneShapes(mergedSnapshot.shapes),
+        crossLinks: cloneCrossLinks(mergedSnapshot.crossLinks),
         selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
@@ -1125,11 +1286,13 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
       const [nextSnapshot, ...restFuture] = state.history.future
       const past = [...state.history.past, cloneSnapshot(state)]
 
+      const mergedSnapshot = mergeLayoutSnapshot(nextSnapshot, state)
+
       const normalizedSelection = normalizeSelectedNodeIds(
         state.selectedNodeIds,
-        nextSnapshot.nodes,
+        mergedSnapshot.nodes,
       )
-      const fallbackNodeId = nextSnapshot.nodes[0]?.id
+      const fallbackNodeId = mergedSnapshot.nodes[0]?.id
       const selectedNodeIds =
         normalizedSelection.length > 0
           ? normalizedSelection
@@ -1139,21 +1302,23 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
 
       const selectedAnnotationId =
         state.selectedAnnotationId &&
-        nextSnapshot.annotations.some((annotation) => annotation.id === state.selectedAnnotationId)
+        mergedSnapshot.annotations.some(
+          (annotation) => annotation.id === state.selectedAnnotationId,
+        )
           ? state.selectedAnnotationId
-          : nextSnapshot.annotations[0]?.id ?? null
+          : mergedSnapshot.annotations[0]?.id ?? null
 
       const selectedShapeId =
         state.selectedShapeId &&
-        nextSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
+        mergedSnapshot.shapes.some((shape) => shape.id === state.selectedShapeId)
           ? state.selectedShapeId
-          : nextSnapshot.shapes[0]?.id ?? null
+          : mergedSnapshot.shapes[0]?.id ?? null
 
       return {
-        nodes: cloneNodes(nextSnapshot.nodes),
-        annotations: cloneAnnotations(nextSnapshot.annotations),
-        shapes: cloneShapes(nextSnapshot.shapes),
-        crossLinks: cloneCrossLinks(nextSnapshot.crossLinks),
+        nodes: cloneNodes(mergedSnapshot.nodes),
+        annotations: cloneAnnotations(mergedSnapshot.annotations),
+        shapes: cloneShapes(mergedSnapshot.shapes),
+        crossLinks: cloneCrossLinks(mergedSnapshot.crossLinks),
         selectedNodeIds,
         selectedAnnotationId,
         selectedShapeId,
