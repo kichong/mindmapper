@@ -25,6 +25,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 
 ## Features to keep in mind
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
+- Undo/Redo only records structural and text edits. Moving or resizing nodes, annotations, or shapes updates the live state but does not add history entries.
 - Cross-links connect any two nodes. They live in `state.crossLinks`, export with the map JSON, and render as curved connectors that arc around nearby nodes.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
 - Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and dispatch `UPDATE_NODES` so single and multi-select color changes land in one history entry.
