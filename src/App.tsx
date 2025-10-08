@@ -747,8 +747,8 @@ export default function App() {
   const [isExportMenuOpen, setExportMenuOpen] = useState(false)
   const [isShortcutsOpen, setShortcutsOpen] = useState(false)
   const [shortcutsVisibleHeight, setShortcutsVisibleHeight] = useState<number | null>(null)
-  const [isToolbarCollapsed, setToolbarCollapsed] = useState(false)
-  const [areActionsCollapsed, setActionsCollapsed] = useState(false)
+  const [isToolbarCollapsed, setToolbarCollapsed] = useState(true)
+  const [areActionsCollapsed, setActionsCollapsed] = useState(true)
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
 

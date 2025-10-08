@@ -34,7 +34,8 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 - Selection now tracks an ordered array. Shift or Meta/Ctrl-click toggles membership, batch reducers like `MOVE_NODES`, `DELETE_NODES`, and `UPDATE_NODES` keep history tidy, and the first id in the array is the "primary" node when a single target is required.
 - Copy/Paste is wired through `handleCopyNodes` / `handlePasteNodes` in `App.tsx`. The `ADD_NODES` reducer clones every selected node into new top-level entries, offsets them slightly, and keeps the whole paste in a single undo step. Buttons live in the bottom-left command panel alongside Ctrl/Cmd+C and Ctrl/Cmd+V shortcuts.
 - Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.
-- The top toolbar collapses. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
+- The top toolbar collapses and now starts in the collapsed state so new sessions stay unobtrusive. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
+- The bottom-left actions panel (delete, copy, undo, etc.) also loads collapsed by default; rely on the existing toggle instead of forcing it open.
 - The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.
 - Double-clicking any node or floating text box should pop the toolbar open and move focus to the shared text editor so users can type immediately.
 - Creating a node (from the toolbar or as a child) should auto-select it, open the toolbar if needed, and focus the shared text editor so typing starts right away.
