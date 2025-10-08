@@ -128,18 +128,20 @@ const CROSS_LINK_CURVE_SCALE = 0.35
 const KEYBOARD_SHORTCUTS: readonly { keys: string; description: string }[] = [
   { keys: 'Enter', description: 'Add a child idea to the selected node' },
   { keys: 'Shift + Enter', description: 'Add a detached idea at the center of the view' },
-  { keys: 'Space or C', description: 'Recenter the view to focus on your map' },
+  { keys: 'Shift/Ctrl/Cmd + Click', description: 'Add or remove a node from the selection' },
   { keys: 'Arrow keys', description: 'Pan the canvas up, down, left, or right' },
+  { keys: 'Space or C', description: 'Recenter the view to focus on your map' },
   { keys: '+ or =', description: 'Zoom in' },
   { keys: '- or _', description: 'Zoom out' },
-  { keys: 'Ctrl/Cmd + C', description: 'Copy the selected ideas' },
-  { keys: 'Ctrl/Cmd + V', description: 'Paste the copied ideas' },
+  { keys: 'Ctrl/Cmd + C / V', description: 'Copy / Paste selected ideas' },
   { keys: 'Ctrl/Cmd + Z', description: 'Undo the last change' },
   { keys: 'Ctrl/Cmd + Shift + Z', description: 'Redo the last undone change' },
   { keys: 'Delete or Backspace', description: 'Delete the selected items' },
+  { keys: 'Esc', description: 'Close open menus' },
 ]
 
-const VISIBLE_SHORTCUT_COUNT = 6
+const VISIBLE_SHORTCUT_COUNT = 8
+
 
 type Point = { x: number; y: number }
 
