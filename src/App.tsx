@@ -2803,7 +2803,8 @@ export default function App() {
         return
       }
 
-      const key = event.key.toLowerCase()
+      const rawKey = event.key
+      const key = typeof rawKey === 'string' ? rawKey.toLowerCase() : ''
       const metaOrCtrl = event.metaKey || event.ctrlKey
 
       if (metaOrCtrl && !event.shiftKey && key === 'z') {
@@ -2892,9 +2893,18 @@ export default function App() {
         return
       }
 
-      if (key === 'delete' || key === 'backspace') {
+      const isDeleteKey =
+        key === 'delete' ||
+        key === 'backspace' ||
+        key === 'del' ||
+        rawKey === 'U+007F' ||
+        event.code === 'Delete' ||
+        event.code === 'Backspace'
+
+      if (isDeleteKey) {
         event.preventDefault()
         handleDeleteSelection()
+        return
       }
     }
 
