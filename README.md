@@ -12,13 +12,12 @@ Mindmapper is a Vite + React canvas app for sketching and sharing mind maps. It 
 - Nodes always include `id`, `parentId`, `text`, `x`, `y`, `color`, and `textSize` (`small`/`medium`/`large`). Multiple `parentId: null` entries form a forest layout.
 - UUID v4 ids are recommended so cross-links and revisions stay stable. Stick to the allowed text sizes; the app normalizes anything else back to `medium`.
 
-Full spacing, orbit, banner, and arrow guidance lives in `AGENTMAPS/AGENTS.MD`. That playbook shows how JSON coordinates translate to the rendered canvas while staying backward compatible.
+Full spacing, orbit, banner, and arrow guidance lives in `llms.txt`. That playbook shows how JSON coordinates translate to the rendered canvas while staying backward compatible.
 
 ## Learn by example
-- `AGENTMAPS/creative-workshop.json` – orbit stacks, arrows, curved cross-links, and banner captions working together.
-- `AGENTMAPS/forest-axis-guide.json` – multiple roots spaced as a forest, a horizon axis with a banner annotation, and bridges between clusters.
+- Two embedded examples live inside `llms.txt` (a creative orbit layout and a forest + axis layout).
 
-Study each JSON file to see how coordinates, colors, and optional metadata map onto the canvas. These two examples cover every supported feature without changing the schema.
+Open `llms.txt` to see how coordinates, colors, and optional metadata map onto the canvas. These examples cover every supported feature without changing the schema.
 
 ## Project scripts
 - `npm run dev` – start the hot-reload dev server.
@@ -28,4 +27,4 @@ Study each JSON file to see how coordinates, colors, and optional metadata map o
 
 ## For contributors and agents
 - Read the repo-level `AGENTS.md` for required checks and collaboration norms.
-- Inside `AGENTMAPS/`, follow `AGENTS.MD` plus the two JSON references—those three files are all a new agent needs to create or interpret a map from scratch.
+- Use `llms.txt` for the consolidated schema, spacing guidance, and embedded JSON examples used by LLMs and humans alike.

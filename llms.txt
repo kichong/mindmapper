@@ -1,0 +1,149 @@
+Mindmapper LLM Guide (llms.txt)
+
+Purpose
+- Single, self-contained instructions for GPTs and other LLMs to generate, read, and modify Mindmapper map JSON without any other files.
+- This file replaces the former AGENTMAPS folder, combining the schema contract, spacing/placement guidance, and examples.
+
+JSON Contract (locked; do not change the schema)
+- Always output a single JSON object with the four top-level arrays: nodes, annotations, shapes, crossLinks. Importers ignore unknown extra top-level keys.
+
+Example skeleton:
+{
+  "metadata": { "source": "llm export" },
+  "exportedAt": "2025-10-08T00:00:00Z",
+  "nodes": [],
+  "annotations": [],
+  "shapes": [],
+  "crossLinks": []
+}
+
+Field Rules
+- Coordinate system: (0, 0) is canvas center; +x right, +y down.
+- IDs: Use UUID v4 strings where possible; keep ids stable across revisions. Human labels live in text, not id.
+- Nodes (required fields for every node):
+  id: string
+  parentId: string | null  (null for roots; multiple roots allowed = forest layout)
+  text: string
+  x: number
+  y: number
+  color: string (hex)
+  textSize: "small" | "medium" | "large" (any other value normalizes to "medium")
+- Annotations (floating labels): id, text, x, y, textSize
+- Shapes (visual frames/emphasis), each entry has id, kind, x, y + kind-specific size fields:
+  ring: radius, thickness, color
+  ellipse: radiusX, radiusY, thickness, color
+  rectangle: width, height, thickness, color
+  arrow: width, height, thickness, angle, color (angle in radians; length accepted by some tools, keep either width/height or length)
+  line: length, thickness, angle, color
+- Cross-links (curved connectors): { id, sourceId, targetId }. Optional style hints may live inside metadata; importers ignore unknown keys.
+
+Parent vs Cross-link
+- parentId models hierarchy (belongs under or extends a branch).
+- crossLinks express lateral relationships across clusters.
+
+Selection, Editing, and History (app behaviors to consider)
+- Undo/Redo records structural and text edits (e.g., adding nodes, changing text), not moves/resizes.
+- Text size must be one of small/medium/large; non-conforming values are normalized to medium.
+
+Placement Guidance (defaults, not hard rules)
+- Siblings: 200–320 px horizontal spacing often reads well.
+- Vertical tier step: 140–200 px between parent and children to avoid connector tangles.
+- Forest spacing: leave 300–600 px between roots.
+- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160–220 px per ring.
+- Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20.
+- Angles: use small offsets (0.003–0.02 radians) for “almost horizontal/vertical” lines to stay crisp.
+
+Axis / Banner Pattern (recipe)
+- A horizontal banner line with a nearby annotation.
+Example shape:
+{
+  "id": "line-1",
+  "kind": "line",
+  "x": 0,
+  "y": 120,
+  "length": 1320,
+  "angle": 0.01,
+  "thickness": 2,
+  "color": "#38bdf8"
+}
+
+Arrow / Vector Pattern (recipe)
+- Directional emphasis connecting or framing ideas.
+Example shape:
+{
+  "id": "arrow-1",
+  "kind": "arrow",
+  "x": -60,
+  "y": 360,
+  "width": 440,
+  "height": 200,
+  "thickness": 48,
+  "angle": -0.4,
+  "color": "#f97316"
+}
+
+Orbit Placement (recipe)
+1) Center orbit shapes on a cluster’s core (cx, cy).
+2) Start with an inner ellipse (thickness 12–16), then add ~160–220 px to radiusX and radiusY for each outer ring.
+3) Place labels using the tangent guideline under Placement Guidance.
+4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20–40 px for legibility.
+
+Color and Emphasis
+- Keep palette consistent inside a cluster; sample exact hexes. Default node color is #4f46e5 when omitted.
+
+Minimal Valid Example (single root, a few children, a cross-link, and an orbit)
+{
+  "nodes": [
+    { "id": "root", "parentId": null, "text": "Creative Workshop", "x": 0, "y": 0, "color": "#4f46e5", "textSize": "large" },
+    { "id": "ideation", "parentId": "root", "text": "Ideation", "x": -360, "y": -20, "color": "#22d3ee", "textSize": "medium" },
+    { "id": "story", "parentId": "root", "text": "Story", "x": 360, "y": -20, "color": "#f97316", "textSize": "medium" },
+    { "id": "brainstorm", "parentId": "ideation", "text": "Lightning brainstorm", "x": -540, "y": 120, "color": "#38bdf8", "textSize": "small" },
+    { "id": "arc", "parentId": "story", "text": "Plot arc", "x": 540, "y": 120, "color": "#f59e0b", "textSize": "small" }
+  ],
+  "annotations": [
+    { "id": "banner", "text": "Workshop Orbit", "x": 0, "y": -260, "textSize": "medium" }
+  ],
+  "shapes": [
+    { "id": "orbit-inner", "kind": "ellipse", "x": 0, "y": 0, "radiusX": 240, "radiusY": 160, "thickness": 14, "color": "#a855f7" },
+    { "id": "orbit-outer", "kind": "ring", "x": 0, "y": 0, "radius": 420, "thickness": 18, "color": "#38bdf8" },
+    { "id": "axis", "kind": "line", "x": 0, "y": 220, "length": 1000, "angle": 0.01, "thickness": 2, "color": "#38bdf8" }
+  ],
+  "crossLinks": [
+    { "id": "link-1", "sourceId": "brainstorm", "targetId": "arc" }
+  ]
+}
+
+Forest + Axis Example (two roots, banner line with caption, bridge between clusters)
+{
+  "nodes": [
+    { "id": "north", "parentId": null, "text": "North Cluster", "x": -420, "y": 0, "color": "#4f46e5", "textSize": "large" },
+    { "id": "south", "parentId": null, "text": "South Cluster", "x": 420, "y": 0, "color": "#4f46e5", "textSize": "large" },
+    { "id": "north-a", "parentId": "north", "text": "A", "x": -620, "y": 160, "color": "#22d3ee", "textSize": "medium" },
+    { "id": "south-b", "parentId": "south", "text": "B", "x": 620, "y": 160, "color": "#22d3ee", "textSize": "medium" }
+  ],
+  "annotations": [
+    { "id": "axis-label", "text": "Horizon Axis", "x": 0, "y": 100, "textSize": "medium" }
+  ],
+  "shapes": [
+    { "id": "horizon", "kind": "line", "x": 0, "y": 120, "length": 1320, "angle": 0.01, "thickness": 2, "color": "#38bdf8" }
+  ],
+  "crossLinks": [
+    { "id": "bridge", "sourceId": "north-a", "targetId": "south-b" }
+  ]
+}
+
+LLM Workflow Checklist
+1) Outline first (plain text bullets). Identify roots vs children.
+2) Draft nodes with ids and parentId; choose coordinates following spacing defaults.
+3) Add annotations (captions/labels) with textSize small/medium/large.
+4) Add shapes for orbits, banners, frames; keep sizes positive and thickness > 0.
+5) Add crossLinks sparingly to suggest lateral connections.
+6) Validate: arrays exist, required node fields present, textSize in {small, medium, large}.
+7) Optional: include metadata/exportedAt for provenance.
+
+Import/Export Behavior Notes (app expectations)
+- Extra top-level keys are ignored; the four arrays must exist (can be empty).
+- Duplicate ids will cause conflicts; ensure all ids are unique strings.
+- The app normalizes invalid textSize to "medium".
+
+End of guide.

@@ -2,7 +2,7 @@
 
 ## Start here
 - Skim `README.md` for the product tour, feature list, and data model overview. It now documents the locked JSON contract so future work stays backward compatible.
-- Read `AGENTMAPS/AGENTS.MD` before editing or generating map JSON. It explains how the importer expects nodes, annotations, shapes, and cross-links to be structured, how optional metadata stays compatible, and links to the two reference JSON files.
+- Read `llms.txt` before editing or generating map JSON. It consolidates the importer expectations for nodes, annotations, shapes, and cross-links, shows spacing/orbit guidance, and embeds two reference JSON examples.
 - Share open questions early. If a requirement is unclear, restate it in your own words and list the follow-up questions so humans can respond quickly.
 
 ## Required checks (run before every commit)
