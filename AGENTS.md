@@ -27,6 +27,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 - Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
 - Undo/Redo only records structural and text edits. Moving or resizing nodes, annotations, or shapes updates the live state but does not add history entries.
 - Cross-links connect any two nodes. They live in `state.crossLinks`, export with the map JSON, and render as curved connectors that arc around nearby nodes.
+- Select any two nodes and use the parent-child link button in the toolbar to reparent the second selection under the first without creating a new node. The ordered selection still matters: the first id is treated as the parent candidate.
 - Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
 - Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and dispatch `UPDATE_NODES` so single and multi-select color changes land in one history entry.
 - Keyboard shortcuts now include Space (or C) to recentre the view and Shift+Enter to add a detached idea. Keep the shortcut list in `KEYBOARD_SHORTCUTS` (App.tsx) in sync when you add or remove shortcuts so the in-app cheat sheet stays accurate.

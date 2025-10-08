@@ -658,6 +658,57 @@ export default function App() {
     return restNodes.every((node) => node.color === firstNode.color) ? firstNode.color : null
   }, [selectedNodes])
 
+  const parentChildLinkStatus = useMemo(() => {
+    if (selectedNodes.length < 2) {
+      return {
+        canLink: false,
+        message: 'Select two ideas so the first can become the parent of the second',
+      }
+    }
+
+    const [potentialParent, potentialChild] = selectedNodes
+    if (!potentialParent || !potentialChild) {
+      return {
+        canLink: false,
+        message: 'Select two ideas so the first can become the parent of the second',
+      }
+    }
+
+    if (potentialParent.id === potentialChild.id) {
+      return {
+        canLink: false,
+        message: 'Pick two different ideas to create a parent-child link',
+      }
+    }
+
+    let ancestorId = potentialParent.parentId
+    while (ancestorId) {
+      if (ancestorId === potentialChild.id) {
+        return {
+          canLink: false,
+          message: 'Cannot create a parent-child loop between these ideas',
+        }
+      }
+      const ancestor = nodeById.get(ancestorId)
+      if (!ancestor) {
+        break
+      }
+      ancestorId = ancestor.parentId
+    }
+
+    if (potentialChild.parentId === potentialParent.id) {
+      return {
+        canLink: false,
+        message: 'These ideas already share a parent-child link',
+      }
+    }
+
+    return {
+      canLink: true,
+      message: 'Make the first selected idea the parent of the second',
+    }
+  }, [nodeById, selectedNodes])
+
   const selectedTextTarget = useMemo(() => {
     if (singleSelectedNode) {
       return {
@@ -2383,6 +2434,47 @@ export default function App() {
     dispatch({ type: 'ADD_CROSS_LINK', crossLink })
   }, [crossLinks, dispatch, isLocked, selectedNodes])
 
+  const handleLinkParentChild = useCallback(() => {
+    if (isLocked) {
+      return
+    }
+
+    if (selectedNodes.length < 2) {
+      return
+    }
+
+    const [potentialParent, potentialChild] = selectedNodes
+    if (!potentialParent || !potentialChild) {
+      return
+    }
+
+    if (potentialParent.id === potentialChild.id) {
+      return
+    }
+
+    let ancestorId = potentialParent.parentId
+    while (ancestorId) {
+      if (ancestorId === potentialChild.id) {
+        return
+      }
+      const ancestor = nodeById.get(ancestorId)
+      if (!ancestor) {
+        break
+      }
+      ancestorId = ancestor.parentId
+    }
+
+    if (potentialChild.parentId === potentialParent.id) {
+      return
+    }
+
+    dispatch({
+      type: 'UPDATE_NODE',
+      nodeId: potentialChild.id,
+      updates: { parentId: potentialParent.id },
+    })
+  }, [dispatch, isLocked, nodeById, selectedNodes])
+
   const handleAddStandaloneNode = useCallback(() => {
     if (isLocked) {
       return
@@ -3518,6 +3610,10 @@ export default function App() {
   const shouldShowNodeColorControls = hasNodeSelection
   const isNodeColorDisabled = isLocked || !hasNodeSelection
   const nodeColorApplyTarget = selectedNodes.length > 1 ? 'all selected nodes' : 'the selected node'
+  const isParentChildButtonDisabled = isLocked || !parentChildLinkStatus.canLink
+  const parentChildLinkButtonTitle = isLocked
+    ? 'Unlock edits to set a parent-child link'
+    : parentChildLinkStatus.message
   const hasCrossLinkSelection = selectedNodes.length >= 2
   const isCrossLinkButtonDisabled = isLocked || !hasCrossLinkSelection
   const crossLinkButtonTitle = isLocked
@@ -3588,6 +3684,26 @@ export default function App() {
                 ×
               </span>
               <span className="visually-hidden">Add new idea</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleLinkParentChild}
+              title={parentChildLinkButtonTitle}
+              aria-label="Create parent-child link"
+              className="mindmap-toolbar__symbol-button"
+              disabled={isParentChildButtonDisabled}
+            >
+              <span
+                aria-hidden="true"
+                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--hierarchy"
+            >
+              {'->'}
+            </span>
+              <span className="visually-hidden">
+                {isParentChildButtonDisabled
+                  ? parentChildLinkStatus.message
+                  : 'Set the first selected idea as the parent of the second'}
+              </span>
             </button>
             <button
               type="button"
