@@ -24,436 +24,86 @@ import {
   type TextSize,
   useMindMap,
 } from './state/MindMapContext'
+import {
+  ANNOTATION_MIN_WIDTH,
+  ANNOTATION_PADDING_Y,
+  ARROW_DEFAULT_ANGLE,
+  ARROW_DEFAULT_COLOR,
+  ARROW_DEFAULT_HEIGHT,
+  ARROW_DEFAULT_THICKNESS,
+  ARROW_DEFAULT_WIDTH,
+  ARROW_HIT_PADDING,
+  ARROW_MIN_HEIGHT,
+  ARROW_MIN_THICKNESS,
+  ARROW_MIN_WIDTH,
+  CROSS_LINK_COLOR_DARK,
+  CROSS_LINK_COLOR_LIGHT,
+  CROSS_LINK_CURVE_SCALE,
+  CROSS_LINK_MIN_CURVE_OFFSET,
+  CROSS_LINK_STROKE_WIDTH,
+  ELLIPSE_DEFAULT_COLOR,
+  ELLIPSE_DEFAULT_RADIUS_X,
+  ELLIPSE_DEFAULT_RADIUS_Y,
+  ELLIPSE_DEFAULT_THICKNESS,
+  ELLIPSE_HIT_PADDING,
+  ELLIPSE_MIN_RADIUS_X,
+  ELLIPSE_MIN_RADIUS_Y,
+  FALLBACK_COLORS,
+  KEYBOARD_PAN_STEP,
+  KEYBOARD_SHORTCUTS,
+  LINE_DEFAULT_ANGLE,
+  LINE_DEFAULT_COLOR,
+  LINE_DEFAULT_LENGTH,
+  LINE_DEFAULT_THICKNESS,
+  LINE_HIT_PADDING,
+  LINE_MIN_LENGTH,
+  LINE_MIN_THICKNESS,
+  LINK_DISTANCE,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  NODE_COLOR_OPTIONS,
+  RECTANGLE_DEFAULT_COLOR,
+  RECTANGLE_DEFAULT_HEIGHT,
+  RECTANGLE_DEFAULT_THICKNESS,
+  RECTANGLE_DEFAULT_WIDTH,
+  RECTANGLE_HIT_PADDING,
+  RECTANGLE_MIN_HEIGHT,
+  RECTANGLE_MIN_WIDTH,
+  RING_DEFAULT_COLOR,
+  RING_DEFAULT_RADIUS,
+  RING_DEFAULT_THICKNESS,
+  RING_HIT_PADDING,
+  RING_MIN_RADIUS,
+  SHAPE_HANDLE_SCREEN_SIZE,
+  VISIBLE_SHORTCUT_COUNT,
+  ZOOM_STEP,
+} from './constants/mindMap'
+import {
+  buildArrowPolygon,
+  clamp,
+  enforceArrowHeadHeights,
+  getArrowGeometry,
+  getLineGeometry,
+  isPointInPolygon,
+  normalizeVector,
+  rotateAndTranslate,
+  toLocalCoordinates,
+  tracePolygon,
+} from './utils/geometry'
+import {
+  calculateNodeLabelLayout,
+  calculateNodeRadius,
+  getAnnotationFont,
+  getAnnotationLineHeight,
+  getNodeFont,
+  getNodeLineHeight,
+  measureAnnotationMetrics,
+  type AnnotationMetrics,
+  type NodeLabelLayout,
+} from './utils/typography'
+import { calculateFitView, type CanvasSize, type ViewTransform } from './utils/view'
 import { convertDataUrlToBytes, createPdfBytesFromJpeg } from './utils/pdf'
 import './App.css'
-
-const NODE_BASE_RADIUS = 40
-const NODE_TEXT_PADDING = 18
-const NODE_FONT_SIZES: Record<TextSize, number> = {
-  small: 12,
-  medium: 20,
-  large: 30,
-}
-const NODE_LINE_HEIGHTS: Record<TextSize, number> = {
-  small: 18,
-  medium: 30,
-  large: 45,
-}
-const NODE_WRAP_STEP = 24
-const NODE_RADIUS_EPSILON = 0.5
-const LINK_DISTANCE = 160
-
-type NodeColorOption = { value: string; label: string; isDefault: boolean }
-const NODE_COLOR_OPTIONS: readonly NodeColorOption[] = [
-  { value: DEFAULT_NODE_COLOR, label: 'Indigo', isDefault: true },
-  { value: '#22d3ee', label: 'Teal', isDefault: true },
-  { value: '#a855f7', label: 'Purple', isDefault: true },
-  { value: '#10b981', label: 'Green', isDefault: true },
-  { value: '#f97316', label: 'Orange', isDefault: true },
-  { value: '#facc15', label: 'Yellow', isDefault: true },
-  { value: '#ef4444', label: 'Red', isDefault: false },
-  { value: '#6b7280', label: 'Slate Gray', isDefault: false },
-  { value: '#9ca3af', label: 'Mist Gray', isDefault: false },
-  { value: '#111827', label: 'Black', isDefault: false },
-]
-const FALLBACK_COLORS = NODE_COLOR_OPTIONS.filter((option) => option.isDefault).map(
-  (option) => option.value,
-)
-const MIN_ZOOM = 0.25
-const MAX_ZOOM = 2.5
-const ZOOM_STEP = 1.2
-const KEYBOARD_PAN_STEP = 80
-const AUTO_CENTER_PADDING = 160
-const ANNOTATION_FONT_SIZES: Record<TextSize, number> = {
-  small: 16,
-  medium: 26,
-  large: 38,
-}
-const ANNOTATION_LINE_HEIGHTS: Record<TextSize, number> = {
-  small: 26,
-  medium: 40,
-  large: 56,
-}
-const ANNOTATION_PADDING_X = 14
-const ANNOTATION_PADDING_Y = 10
-const ANNOTATION_MIN_WIDTH = 120
-const RING_DEFAULT_RADIUS = 160
-const RING_DEFAULT_THICKNESS = 18
-const RING_MIN_RADIUS = 48
-const SHAPE_HANDLE_SCREEN_SIZE = 28
-const RING_HIT_PADDING = 6
-const RING_DEFAULT_COLOR = '#38bdf8'
-const ELLIPSE_DEFAULT_RADIUS_X = 200
-const ELLIPSE_DEFAULT_RADIUS_Y = 120
-const ELLIPSE_MIN_RADIUS_X = 60
-const ELLIPSE_MIN_RADIUS_Y = 45
-const ELLIPSE_DEFAULT_THICKNESS = 14
-const ELLIPSE_HIT_PADDING = 8
-const ELLIPSE_DEFAULT_COLOR = '#a855f7'
-const RECTANGLE_DEFAULT_WIDTH = 320
-const RECTANGLE_DEFAULT_HEIGHT = 200
-const RECTANGLE_MIN_WIDTH = 120
-const RECTANGLE_MIN_HEIGHT = 80
-const RECTANGLE_DEFAULT_THICKNESS = 12
-const RECTANGLE_HIT_PADDING = 6
-const RECTANGLE_DEFAULT_COLOR = '#34d399'
-const ARROW_DEFAULT_WIDTH = 340
-const ARROW_DEFAULT_HEIGHT = 180
-const ARROW_MIN_WIDTH = 36
-const ARROW_MIN_HEIGHT = 6
-const ARROW_DEFAULT_THICKNESS = 48
-const ARROW_MIN_THICKNESS = 2
-const ARROW_HIT_PADDING = 10
-const ARROW_DEFAULT_COLOR = '#f97316'
-const ARROW_HEAD_RATIO = 0.72
-const ARROW_MIN_HEAD_LENGTH = 26
-const ARROW_MIN_SHAFT_HALF_HEIGHT = 1.2
-const ARROW_HEAD_BASE_RATIO = 2.8
-const ARROW_HEAD_BASE_PADDING = 6
-const ARROW_MIN_HEAD_HALF_HEIGHT = 7
-const ARROW_DEFAULT_ANGLE = 0
-const LINE_DEFAULT_LENGTH = 280
-const LINE_DEFAULT_THICKNESS = 8
-const LINE_MIN_LENGTH = 20
-const LINE_MIN_THICKNESS = 1.2
-const LINE_HIT_PADDING = 6
-const LINE_DEFAULT_COLOR = '#22d3ee'
-const LINE_DEFAULT_ANGLE = 0
-const CROSS_LINK_COLOR_LIGHT = '#0ea5e9'
-const CROSS_LINK_COLOR_DARK = 'rgba(125, 211, 252, 0.85)'
-const CROSS_LINK_STROKE_WIDTH = 4
-const CROSS_LINK_MIN_CURVE_OFFSET = 120
-const CROSS_LINK_CURVE_SCALE = 0.35
-
-const KEYBOARD_SHORTCUTS: readonly { keys: string; description: string }[] = [
-  { keys: 'Enter', description: 'Add a child idea to the selected node' },
-  { keys: 'Shift + Enter', description: 'Add a detached idea at the center of the view' },
-  { keys: 'Shift/Ctrl/Cmd + Click', description: 'Add or remove a node from the selection' },
-  { keys: 'Arrow keys', description: 'Pan the canvas up, down, left, or right' },
-  { keys: 'Space or C', description: 'Recenter the view to focus on your map' },
-  { keys: '+ or =', description: 'Zoom in' },
-  { keys: '- or _', description: 'Zoom out' },
-  { keys: 'Ctrl/Cmd + C / V', description: 'Copy / Paste selected ideas' },
-  { keys: 'Ctrl/Cmd + Z', description: 'Undo the last change' },
-  { keys: 'Ctrl/Cmd + Shift + Z', description: 'Redo the last undone change' },
-  { keys: 'Delete or Backspace', description: 'Delete the selected items' },
-  { keys: 'Esc', description: 'Close open menus' },
-]
-
-const VISIBLE_SHORTCUT_COUNT = 8
-
-
-type Point = { x: number; y: number }
-
-type ArrowGeometry = {
-  halfWidth: number
-  halfHeight: number
-  headLength: number
-  shaftHalfHeight: number
-}
-
-type LineGeometry = {
-  halfLength: number
-  halfThickness: number
-}
-
-const tracePolygon = (context: CanvasRenderingContext2D, points: Point[]) => {
-  if (points.length === 0) {
-    return
-  }
-
-  context.beginPath()
-  context.moveTo(points[0]?.x ?? 0, points[0]?.y ?? 0)
-  for (let index = 1; index < points.length; index += 1) {
-    const point = points[index]
-    context.lineTo(point.x, point.y)
-  }
-  context.closePath()
-}
-
-const rotatePoint = (point: Point, angle: number): Point => {
-  const cos = Math.cos(angle)
-  const sin = Math.sin(angle)
-  return {
-    x: point.x * cos - point.y * sin,
-    y: point.x * sin + point.y * cos,
-  }
-}
-
-const rotateAndTranslate = (point: Point, center: Point, angle: number): Point => {
-  const rotated = rotatePoint(point, angle)
-  return {
-    x: rotated.x + center.x,
-    y: rotated.y + center.y,
-  }
-}
-
-const normalizeVector = (dx: number, dy: number): Point => {
-  const length = Math.hypot(dx, dy)
-  if (length === 0) {
-    return { x: 0, y: 0 }
-  }
-  return { x: dx / length, y: dy / length }
-}
-
-const enforceArrowHeadHeights = (rawHalfHeight: number, halfThickness: number) => {
-  // Keep the arrow head leg (the perpendicular edge) bold enough to read
-  const limitedShaftHalfHeight = Math.max(
-    ARROW_MIN_SHAFT_HALF_HEIGHT,
-    Math.min(halfThickness, rawHalfHeight),
-  )
-
-  const headHalfHeight = Math.max(
-    rawHalfHeight,
-    limitedShaftHalfHeight * ARROW_HEAD_BASE_RATIO,
-    limitedShaftHalfHeight + ARROW_HEAD_BASE_PADDING,
-    ARROW_MIN_HEAD_HALF_HEIGHT,
-  )
-
-  const shaftHalfHeight = Math.max(
-    ARROW_MIN_SHAFT_HALF_HEIGHT,
-    Math.min(halfThickness, headHalfHeight),
-  )
-
-  return { headHalfHeight, shaftHalfHeight }
-}
-
-const toLocalCoordinates = (point: Point, center: Point, angle: number): Point => {
-  const dx = point.x - center.x
-  const dy = point.y - center.y
-  const cos = Math.cos(-angle)
-  const sin = Math.sin(-angle)
-  return {
-    x: dx * cos - dy * sin,
-    y: dx * sin + dy * cos,
-  }
-}
-
-const getArrowGeometry = (shape: MindMapArrow): ArrowGeometry => {
-  const halfWidth = Math.max(Math.abs(shape.width) / 2, ARROW_MIN_WIDTH / 2)
-  const rawHalfHeight = Math.max(Math.abs(shape.height) / 2, ARROW_MIN_HEIGHT / 2)
-  const baseHeadLength = Math.max(halfWidth * ARROW_HEAD_RATIO, ARROW_MIN_HEAD_LENGTH)
-  const headLength = Math.min(baseHeadLength, halfWidth)
-  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, ARROW_MIN_THICKNESS / 2)
-  const { headHalfHeight, shaftHalfHeight } = enforceArrowHeadHeights(
-    rawHalfHeight,
-    halfThickness,
-  )
-
-  return {
-    halfWidth,
-    halfHeight: headHalfHeight,
-    headLength,
-    shaftHalfHeight,
-  }
-}
-
-const getLineGeometry = (shape: MindMapLine): LineGeometry => {
-  const halfLength = Math.max(Math.abs(shape.length) / 2, LINE_MIN_LENGTH / 2)
-  const halfThickness = Math.max(Math.abs(shape.thickness) / 2, LINE_MIN_THICKNESS / 2)
-
-  return {
-    halfLength,
-    halfThickness,
-  }
-}
-
-const buildArrowPolygon = (shape: MindMapArrow, extraPadding = 0): Point[] => {
-  const { halfWidth, halfHeight, headLength, shaftHalfHeight } = getArrowGeometry(shape)
-  const paddedHalfWidth = halfWidth + extraPadding
-  const paddedHalfHeight = halfHeight + extraPadding
-  const paddedHeadLength = Math.min(paddedHalfWidth, headLength + extraPadding)
-  const paddedShaftHalfHeight = Math.max(
-    ARROW_MIN_SHAFT_HALF_HEIGHT,
-    Math.min(shaftHalfHeight + extraPadding, paddedHalfHeight),
-  )
-
-  const angle = shape.angle ?? 0
-  const center = { x: shape.x, y: shape.y }
-  const headStartX = paddedHalfWidth - paddedHeadLength
-
-  const localPoints: Point[] = [
-    { x: -paddedHalfWidth, y: -paddedShaftHalfHeight },
-    { x: headStartX, y: -paddedShaftHalfHeight },
-    { x: headStartX, y: -paddedHalfHeight },
-    { x: paddedHalfWidth, y: 0 },
-    { x: headStartX, y: paddedHalfHeight },
-    { x: headStartX, y: paddedShaftHalfHeight },
-    { x: -paddedHalfWidth, y: paddedShaftHalfHeight },
-  ]
-
-  return localPoints.map((point) => rotateAndTranslate(point, center, angle))
-}
-
-const isPointInPolygon = (point: Point, polygon: Point[]): boolean => {
-  let inside = false
-
-  for (let index = 0, previousIndex = polygon.length - 1; index < polygon.length; index += 1) {
-    const vertex = polygon[index]
-    const previous = polygon[previousIndex]
-
-    const intersects =
-      (vertex.y > point.y) !== (previous.y > point.y) &&
-      point.x <
-        ((previous.x - vertex.x) * (point.y - vertex.y)) /
-          ((previous.y - vertex.y) || Number.EPSILON) +
-          vertex.x
-
-    if (intersects) {
-      inside = !inside
-    }
-
-    previousIndex = index
-  }
-
-  return inside
-}
-
-type ViewTransform = {
-  scale: number
-  offsetX: number
-  offsetY: number
-}
-
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
-
-const NODE_FONT_FAMILY = 'Inter, system-ui, sans-serif'
-const ANNOTATION_FONT_FAMILY = 'Inter, system-ui, sans-serif'
-
-const getNodeFont = (size: TextSize) => `${NODE_FONT_SIZES[size]}px ${NODE_FONT_FAMILY}`
-const getNodeLineHeight = (size: TextSize) => NODE_LINE_HEIGHTS[size]
-const getAnnotationFont = (size: TextSize) => `${ANNOTATION_FONT_SIZES[size]}px ${ANNOTATION_FONT_FAMILY}`
-const getAnnotationLineHeight = (size: TextSize) => ANNOTATION_LINE_HEIGHTS[size]
-
-const calculateNodeRadius = (contentWidth: number, contentHeight: number) => {
-  const paddedWidth = contentWidth + NODE_TEXT_PADDING * 2
-  const paddedHeight = contentHeight + NODE_TEXT_PADDING * 2
-  const diagonal = Math.sqrt(paddedWidth * paddedWidth + paddedHeight * paddedHeight)
-  return Math.max(NODE_BASE_RADIUS, diagonal / 2)
-}
-
-const calculateNodeLabelLayout = (
-  context: CanvasRenderingContext2D,
-  rawLabel: string,
-  textSize: TextSize,
-): NodeLabelLayout => {
-  const label = rawLabel.trim().length > 0 ? rawLabel : 'New Idea'
-  const lineHeight = getNodeLineHeight(textSize)
-  const words = label.split(/\s+/).filter((word) => word.length > 0)
-
-  if (words.length === 0) {
-    words.push(label)
-  }
-
-  const spaceWidth = context.measureText(' ').width
-  const wordWidths = words.map((word) => context.measureText(word).width)
-  const prefixWidths = new Array<number>(wordWidths.length + 1)
-  prefixWidths[0] = 0
-
-  for (let index = 0; index < wordWidths.length; index += 1) {
-    prefixWidths[index + 1] = prefixWidths[index] + wordWidths[index]
-  }
-
-  const computeLineWidth = (start: number, end: number) =>
-    prefixWidths[end + 1] - prefixWidths[start] + spaceWidth * (end - start)
-
-  const singleLineWidth = context.measureText(label).width
-  let maxWordWidth = wordWidths.reduce((max, width) => Math.max(max, width), 0)
-
-  if (!Number.isFinite(maxWordWidth)) {
-    maxWordWidth = singleLineWidth
-  }
-
-  const minWidth = Math.max(maxWordWidth, 1)
-  const maxWidth = Math.max(singleLineWidth, minWidth)
-  const candidateWidths = new Set<number>([maxWidth, minWidth])
-
-  if (maxWidth > minWidth) {
-    for (let width = maxWidth - NODE_WRAP_STEP; width > minWidth; width -= NODE_WRAP_STEP) {
-      candidateWidths.add(width)
-    }
-  }
-
-  for (let start = 0; start < words.length; start += 1) {
-    for (let end = start; end < words.length; end += 1) {
-      const width = computeLineWidth(start, end)
-      if (width >= minWidth && width <= maxWidth) {
-        candidateWidths.add(width)
-      }
-    }
-  }
-
-  const wrapWithWidth = (limit: number) => {
-    const segments: Array<{ start: number; end: number; width: number }> = []
-    let start = 0
-
-    while (start < words.length) {
-      let end = start
-      let width = computeLineWidth(start, end)
-
-      while (end + 1 < words.length) {
-        const nextWidth = computeLineWidth(start, end + 1)
-        if (nextWidth > limit && (width <= limit || end === start)) {
-          break
-        }
-
-        if (nextWidth > limit && width > limit) {
-          break
-        }
-
-        end += 1
-        width = nextWidth
-      }
-
-      segments.push({ start, end, width })
-      start = end + 1
-    }
-
-    const lines = segments.map(({ start: lineStart, end: lineEnd }) =>
-      words.slice(lineStart, lineEnd + 1).join(' '),
-    )
-    const width = segments.reduce((max, segment) => Math.max(max, segment.width), 0)
-    const height = Math.max(lineHeight, lines.length * lineHeight)
-
-    return { lines, width, height }
-  }
-
-  let bestLayout = wrapWithWidth(maxWidth)
-  let bestRadius = calculateNodeRadius(bestLayout.width, bestLayout.height)
-
-  candidateWidths.forEach((candidate) => {
-    if (!Number.isFinite(candidate) || candidate <= 0) {
-      return
-    }
-
-    const layout = wrapWithWidth(candidate)
-    const radius = calculateNodeRadius(layout.width, layout.height)
-
-    if (radius + NODE_RADIUS_EPSILON < bestRadius) {
-      bestLayout = layout
-      bestRadius = radius
-      return
-    }
-
-    if (Math.abs(radius - bestRadius) <= NODE_RADIUS_EPSILON) {
-      if (layout.width < bestLayout.width - NODE_RADIUS_EPSILON) {
-        bestLayout = layout
-        bestRadius = radius
-      }
-    }
-  })
-
-  const radius = Math.max(NODE_BASE_RADIUS, bestRadius)
-
-  return {
-    lines: bestLayout.lines.length > 0 ? bestLayout.lines : [label],
-    width: bestLayout.width,
-    height: bestLayout.height,
-    lineHeight,
-    radius,
-  }
-}
-
 const TEXT_SIZE_LABELS: Record<TextSize, string> = {
   small: 'Small',
   medium: 'Medium',
@@ -505,25 +155,6 @@ type InteractionState =
     }
   | null
 
-type CanvasSize = {
-  width: number
-  height: number
-}
-
-type AnnotationMetrics = {
-  width: number
-  height: number
-  font: string
-}
-
-type NodeLabelLayout = {
-  lines: string[]
-  width: number
-  height: number
-  lineHeight: number
-  radius: number
-}
-
 type CopiedNodeSnapshot = {
   text: string
   color: string
@@ -535,55 +166,6 @@ type CopiedNodeSnapshot = {
 type ClipboardSnapshot = {
   nodes: CopiedNodeSnapshot[]
   pasteCount: number
-}
-
-function calculateFitView(
-  nodes: MindMapNode[],
-  size: CanvasSize,
-  getNodeRadius: (node: MindMapNode) => number,
-): ViewTransform | null {
-  const { width, height } = size
-  if (nodes.length === 0 || width === 0 || height === 0) {
-    return null
-  }
-
-  let minX = Infinity
-  let maxX = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
-
-  nodes.forEach((node) => {
-    const radius = getNodeRadius(node)
-    minX = Math.min(minX, node.x - radius)
-    maxX = Math.max(maxX, node.x + radius)
-    minY = Math.min(minY, node.y - radius)
-    maxY = Math.max(maxY, node.y + radius)
-  })
-
-  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
-    return null
-  }
-
-  const paddedMinX = minX - AUTO_CENTER_PADDING
-  const paddedMaxX = maxX + AUTO_CENTER_PADDING
-  const paddedMinY = minY - AUTO_CENTER_PADDING
-  const paddedMaxY = maxY + AUTO_CENTER_PADDING
-
-  const contentWidth = Math.max(paddedMaxX - paddedMinX, 1)
-  const contentHeight = Math.max(paddedMaxY - paddedMinY, 1)
-
-  const scaleX = width / contentWidth
-  const scaleY = height / contentHeight
-  const nextScale = clamp(Math.min(scaleX, scaleY), MIN_ZOOM, MAX_ZOOM)
-
-  const centerX = (paddedMinX + paddedMaxX) / 2
-  const centerY = (paddedMinY + paddedMaxY) / 2
-
-  return {
-    scale: nextScale,
-    offsetX: -centerX * nextScale,
-    offsetY: -centerY * nextScale,
-  }
 }
 
 export default function App() {
@@ -856,22 +438,8 @@ export default function App() {
         return null
       }
 
-      const previousFont = context.font
       const textSize = normalizeTextSize(annotation.textSize)
-      const annotationFont = getAnnotationFont(textSize)
-      context.font = annotationFont
-      const content = annotation.text.length > 0 ? annotation.text : 'New text'
-      const metrics = context.measureText(content)
-      const textWidth = Math.max(
-        metrics.width,
-        ANNOTATION_MIN_WIDTH - ANNOTATION_PADDING_X * 2,
-      )
-      const width = textWidth + ANNOTATION_PADDING_X * 2
-      const lineHeight = getAnnotationLineHeight(textSize)
-      const height = lineHeight + ANNOTATION_PADDING_Y * 2
-      context.font = previousFont
-
-      return { width, height, font: annotationFont }
+      return measureAnnotationMetrics(context, annotation.text, textSize)
     },
     [],
   )
