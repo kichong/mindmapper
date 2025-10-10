@@ -15,7 +15,7 @@
 }
 
 .app-shell--dark .mindmap-canvas {
-  background: radial-gradient(circle at center, #4f46e515, #0f172a 85%);
+  background: radial-gradient(circle at center, rgba(79, 70, 229, 0.08), #020409 88%);
 }
 
 .app-shell--light .mindmap-canvas {
@@ -32,10 +32,10 @@
   gap: 0.55rem;
   padding: 0.65rem 0.75rem 0.75rem;
   border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(4, 7, 12, 0.78);
   color: #f8fafc;
   backdrop-filter: blur(12px);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   width: auto;
   max-width: min(46rem, calc(100vw - 2.5rem));
   z-index: 5;
@@ -225,10 +225,10 @@
   gap: 0.5rem;
   padding: 0.9rem 1rem;
   border-radius: 1.25rem;
-  background: rgba(15, 23, 42, 0.78);
+  background: rgba(4, 7, 12, 0.84);
   color: #f8fafc;
   backdrop-filter: blur(12px);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 .mindmap-io-panel__export {
@@ -245,8 +245,8 @@
   gap: 0.5rem;
   padding: 0.75rem;
   border-radius: 0.85rem;
-  background: rgba(15, 23, 42, 0.92);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.55);
+  background: rgba(4, 7, 12, 0.94);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.65);
   min-width: 12rem;
   z-index: 10;
 }
@@ -283,9 +283,9 @@
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(4, 7, 12, 0.94);
   color: #f8fafc;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.55);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.65);
   min-width: 18rem;
   max-width: clamp(18rem, 32vw, 24rem);
   z-index: 10;
@@ -316,7 +316,7 @@
   gap: 0.25rem;
   padding: 0.45rem 0.6rem;
   border-radius: 0.75rem;
-  background: rgba(30, 41, 59, 0.65);
+  background: rgba(12, 15, 18, 0.74);
 }
 
 .mindmap-shortcuts__keys {
@@ -337,7 +337,7 @@
   gap: 0.5rem;
   padding: 0.45rem 0.75rem 0.55rem;
   border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(4, 7, 12, 0.62);
   width: 100%;
 }
 
@@ -358,7 +358,7 @@
   padding: 0.32rem 0.65rem;
   border-radius: 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.9);
+  background: rgba(12, 15, 18, 0.92);
   color: #f8fafc;
   font-size: 0.92rem;
 }
@@ -380,7 +380,7 @@
   padding: 0.32rem 0.65rem;
   border-radius: 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.9);
+  background: rgba(12, 15, 18, 0.92);
   color: #f8fafc;
   font-size: 0.92rem;
   appearance: none;
@@ -414,7 +414,7 @@
   min-width: 2.05rem;
   padding: 0;
   border-radius: 999px;
-  border: 2px solid rgba(15, 23, 42, 0.5);
+  border: 2px solid rgba(4, 7, 12, 0.55);
   box-shadow: none;
   background-clip: padding-box;
   display: inline-flex;
@@ -426,7 +426,7 @@
 
 .mindmap-toolbar__color-swatch:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.48);
 }
 
 .mindmap-toolbar__color-swatch--selected {
@@ -469,20 +469,20 @@
   border-radius: 0.9rem;
   border: none;
   color: #f8fafc;
-  background: linear-gradient(145deg, #4b5563, #1f2937);
+  background: linear-gradient(145deg, #111317, #05080f);
   font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 .mindmap-navigation button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.55);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.65);
 }
 
 .mindmap-navigation button:active {
@@ -507,7 +507,7 @@
   gap: 0.6rem;
   padding: 0.45rem 0.75rem;
   border-radius: 9999px;
-  background: rgba(55, 65, 81, 0.85);
+  background: rgba(18, 20, 24, 0.92);
   font-size: 0.85rem;
   font-weight: 600;
   color: #f8fafc;
@@ -522,8 +522,8 @@
   width: 2.4rem;
   height: 2.4rem;
   font-size: 1.2rem;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.4);
-  background: linear-gradient(145deg, #4b5563, #1f2937);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.52);
+  background: linear-gradient(145deg, #111317, #05080f);
 }
 
 .mindmap-actions {

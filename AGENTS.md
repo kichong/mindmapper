@@ -19,6 +19,7 @@ These commands validate syntax, formatting, types, and bundling. Rerun them afte
 
 ## Collaboration tips
 - Document new conventions (UI tweaks, data shapes, helper utilities) directly in the scoped `AGENTS.MD` file so future agents inherit the context.
+- Dark mode surfaces now anchor to a near-black base (`#020409`) with overlays derived from `rgba(4, 7, 12, alpha)`. Keep new backgrounds aligned with this palette so the theme stays consistent.
 - Prefer enhancing existing patterns instead of adding parallel solutions. Reuse helpers like `normalizeTextSize`, the shared toolbar text editor, and the `selectedTextTarget` pattern.
 - Shared constants now live in `src/constants/mindMap.ts`. Canvas math helpers sit in `src/utils/geometry.ts`, text layout utilities in `src/utils/typography.ts`, and view fitting in `src/utils/view.ts`. Update these modules instead of redefining values in components.
 - When expanding shape tools, match the golden resize handle interaction already used by rings and ellipses.
