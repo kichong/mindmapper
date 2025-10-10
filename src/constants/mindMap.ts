@@ -38,6 +38,14 @@ export const MAX_ZOOM = 2.5
 export const ZOOM_STEP = 1.2
 export const KEYBOARD_PAN_STEP = 80
 export const AUTO_CENTER_PADDING = 160
+export const GRIDLINE_SPACING = 80
+export const GRIDLINE_MAJOR_INTERVAL = 5
+export const GRIDLINE_COLOR_DARK = 'rgba(148, 163, 184, 0.12)'
+export const GRIDLINE_COLOR_LIGHT = 'rgba(15, 23, 42, 0.08)'
+export const GRIDLINE_MAJOR_COLOR_DARK = 'rgba(148, 163, 184, 0.22)'
+export const GRIDLINE_MAJOR_COLOR_LIGHT = 'rgba(15, 23, 42, 0.18)'
+export const GRIDLINE_AXIS_COLOR_DARK = 'rgba(248, 250, 252, 0.32)'
+export const GRIDLINE_AXIS_COLOR_LIGHT = 'rgba(15, 23, 42, 0.28)'
 
 export const ANNOTATION_FONT_SIZES = {
   small: 16,

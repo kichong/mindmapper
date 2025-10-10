@@ -77,6 +77,14 @@ import {
   SHAPE_HANDLE_SCREEN_SIZE,
   VISIBLE_SHORTCUT_COUNT,
   ZOOM_STEP,
+  GRIDLINE_SPACING,
+  GRIDLINE_MAJOR_INTERVAL,
+  GRIDLINE_COLOR_DARK,
+  GRIDLINE_COLOR_LIGHT,
+  GRIDLINE_MAJOR_COLOR_DARK,
+  GRIDLINE_MAJOR_COLOR_LIGHT,
+  GRIDLINE_AXIS_COLOR_DARK,
+  GRIDLINE_AXIS_COLOR_LIGHT,
 } from './constants/mindMap'
 import {
   buildArrowPolygon,
@@ -166,6 +174,26 @@ type CopiedNodeSnapshot = {
 type ClipboardSnapshot = {
   nodes: CopiedNodeSnapshot[]
   pasteCount: number
+}
+
+const GRID_SNAP_EPSILON = 0.5
+
+function snapValue(value: number, spacing: number): number {
+  if (spacing <= 0) {
+    return value
+  }
+  return Math.round(value / spacing) * spacing
+}
+
+function snapPoint(point: { x: number; y: number }, spacing: number) {
+  return {
+    x: snapValue(point.x, spacing),
+    y: snapValue(point.y, spacing),
+  }
+}
+
+function isSnapEligibleShape(shape: MindMapShape): boolean {
+  return shape.kind === 'rectangle' || shape.kind === 'arrow' || shape.kind === 'line'
 }
 
 export default function App() {
@@ -335,6 +363,8 @@ export default function App() {
   const [areActionsCollapsed, setActionsCollapsed] = useState(true)
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
+  const [isGridModeEnabled, setIsGridModeEnabled] = useState(false)
+  const gridModeRef = useRef(isGridModeEnabled)
 
   useEffect(() => {
     if (!isLocked) {
@@ -358,7 +388,7 @@ export default function App() {
 
   useEffect(() => {
     // Keep the rest of the page in step with the canvas background choice
-    const darkColor = '#0f172a'
+    const darkColor = '#020409'
     const lightColor = '#f8fafc'
     document.body.style.backgroundColor = backgroundTheme === 'dark' ? darkColor : lightColor
 
@@ -530,6 +560,10 @@ export default function App() {
     setBackgroundTheme((previous) => (previous === 'dark' ? 'light' : 'dark'))
   }, [])
 
+  const toggleGridMode = useCallback(() => {
+    setIsGridModeEnabled((previous) => !previous)
+  }, [])
+
   const drawScene = useCallback(() => {
     const context = contextRef.current
     if (!context) {
@@ -560,6 +594,74 @@ export default function App() {
     context.translate(centerX + offsetX, centerY + offsetY)
     context.scale(scale, scale)
 
+    if (gridModeRef.current) {
+      const gridSpacing = GRIDLINE_SPACING
+      const majorInterval = Math.max(1, GRIDLINE_MAJOR_INTERVAL)
+      const minorColor =
+        backgroundTheme === 'dark' ? GRIDLINE_COLOR_DARK : GRIDLINE_COLOR_LIGHT
+      const majorColor =
+        backgroundTheme === 'dark' ? GRIDLINE_MAJOR_COLOR_DARK : GRIDLINE_MAJOR_COLOR_LIGHT
+      const axisColor =
+        backgroundTheme === 'dark' ? GRIDLINE_AXIS_COLOR_DARK : GRIDLINE_AXIS_COLOR_LIGHT
+
+      const viewLeft = (-centerX - offsetX) / scale
+      const viewRight = (centerX - offsetX) / scale
+      const viewTop = (-centerY - offsetY) / scale
+      const viewBottom = (centerY - offsetY) / scale
+
+      const firstVerticalIndex = Math.floor(viewLeft / gridSpacing)
+      const lastVerticalIndex = Math.ceil(viewRight / gridSpacing)
+      const firstHorizontalIndex = Math.floor(viewTop / gridSpacing)
+      const lastHorizontalIndex = Math.ceil(viewBottom / gridSpacing)
+
+      const baseLineWidth = Math.max(0.75 / scale, 0.35 / scale)
+      const majorLineWidth = Math.max(baseLineWidth * 1.6, baseLineWidth + 0.4 / scale)
+
+      const isMajorIndex = (index: number) =>
+        ((index % majorInterval) + majorInterval) % majorInterval === 0
+
+      context.save()
+      context.lineCap = 'butt'
+
+      for (let index = firstVerticalIndex; index <= lastVerticalIndex; index += 1) {
+        const x = index * gridSpacing
+        context.beginPath()
+        context.moveTo(x, viewTop)
+        context.lineTo(x, viewBottom)
+        if (index === 0) {
+          context.lineWidth = majorLineWidth
+          context.strokeStyle = axisColor
+        } else if (isMajorIndex(index)) {
+          context.lineWidth = majorLineWidth
+          context.strokeStyle = majorColor
+        } else {
+          context.lineWidth = baseLineWidth
+          context.strokeStyle = minorColor
+        }
+        context.stroke()
+      }
+
+      for (let index = firstHorizontalIndex; index <= lastHorizontalIndex; index += 1) {
+        const y = index * gridSpacing
+        context.beginPath()
+        context.moveTo(viewLeft, y)
+        context.lineTo(viewRight, y)
+        if (index === 0) {
+          context.lineWidth = majorLineWidth
+          context.strokeStyle = axisColor
+        } else if (isMajorIndex(index)) {
+          context.lineWidth = majorLineWidth
+          context.strokeStyle = majorColor
+        } else {
+          context.lineWidth = baseLineWidth
+          context.strokeStyle = minorColor
+        }
+        context.stroke()
+      }
+
+      context.restore()
+    }
+
     shapesToDraw.forEach((shape) => {
       context.save()
 
@@ -587,7 +689,7 @@ export default function App() {
           context.fillStyle = '#facc15'
           context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#0f172a'
+          context.strokeStyle = '#020409'
           context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
         }
 
@@ -622,7 +724,7 @@ export default function App() {
           context.fillStyle = '#facc15'
           context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#0f172a'
+          context.strokeStyle = '#020409'
           context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
         }
 
@@ -655,7 +757,7 @@ export default function App() {
           context.fillStyle = '#facc15'
           context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#0f172a'
+          context.strokeStyle = '#020409'
           context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
         }
 
@@ -700,7 +802,7 @@ export default function App() {
             handleSize,
           )
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#0f172a'
+          context.strokeStyle = '#020409'
           context.strokeRect(
             handlePoint.x - handleHalf,
             handlePoint.y - handleHalf,
@@ -754,7 +856,7 @@ export default function App() {
             handleSize,
           )
           context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#0f172a'
+          context.strokeStyle = '#020409'
           context.strokeRect(
             handlePoint.x - handleHalf,
             handlePoint.y - handleHalf,
@@ -958,6 +1060,11 @@ export default function App() {
 
     context.restore()
   }, [backgroundTheme, measureAnnotation, measureNodeLabel])
+
+  useEffect(() => {
+    gridModeRef.current = isGridModeEnabled
+    drawScene()
+  }, [isGridModeEnabled, drawScene])
 
   useEffect(() => {
     viewRef.current = viewTransform
@@ -1620,18 +1727,24 @@ export default function App() {
           return
         }
 
-        const nextX = scenePoint.x - interaction.offsetX
-        const nextY = scenePoint.y - interaction.offsetY
+        const unsnapped = {
+          x: scenePoint.x - interaction.offsetX,
+          y: scenePoint.y - interaction.offsetY,
+        }
+        const shouldSnap = gridModeRef.current && isSnapEligibleShape(shape)
+        const target = shouldSnap ? snapPoint(unsnapped, GRIDLINE_SPACING) : unsnapped
+        const deltaX = Math.abs(target.x - shape.x)
+        const deltaY = Math.abs(target.y - shape.y)
 
-        if (Math.abs(nextX - shape.x) < 0.5 && Math.abs(nextY - shape.y) < 0.5) {
+        if (deltaX < GRID_SNAP_EPSILON && deltaY < GRID_SNAP_EPSILON) {
           return
         }
 
         dispatch({
           type: 'MOVE_SHAPE',
           shapeId: interaction.shapeId,
-          x: nextX,
-          y: nextY,
+          x: target.x,
+          y: target.y,
         })
         return
       }
@@ -1643,8 +1756,11 @@ export default function App() {
           return
         }
 
+        const shouldSnap = gridModeRef.current && isSnapEligibleShape(shape)
+        const pointer = shouldSnap ? snapPoint(scenePoint, GRIDLINE_SPACING) : scenePoint
+
         if (shape.kind === 'ring') {
-          const distance = Math.hypot(scenePoint.x - shape.x, scenePoint.y - shape.y)
+          const distance = Math.hypot(pointer.x - shape.x, pointer.y - shape.y)
           const minRadius = Math.max(RING_MIN_RADIUS, shape.thickness / 2 + 4)
           const nextRadius = Math.max(minRadius, distance)
 
@@ -1661,8 +1777,8 @@ export default function App() {
         }
 
         if (shape.kind === 'ellipse') {
-          const deltaX = Math.abs(scenePoint.x - shape.x)
-          const deltaY = Math.abs(scenePoint.y - shape.y)
+          const deltaX = Math.abs(pointer.x - shape.x)
+          const deltaY = Math.abs(pointer.y - shape.y)
           const minRadiusX = Math.max(ELLIPSE_MIN_RADIUS_X, shape.thickness / 2 + 6)
           const minRadiusY = Math.max(ELLIPSE_MIN_RADIUS_Y, shape.thickness / 2 + 6)
           const nextRadiusX = Math.max(minRadiusX, deltaX)
@@ -1684,8 +1800,8 @@ export default function App() {
         }
 
         if (shape.kind === 'rectangle') {
-          const deltaX = Math.abs(scenePoint.x - shape.x)
-          const deltaY = Math.abs(scenePoint.y - shape.y)
+          const deltaX = Math.abs(pointer.x - shape.x)
+          const deltaY = Math.abs(pointer.y - shape.y)
           const minHalfWidth = Math.max(RECTANGLE_MIN_WIDTH / 2, shape.thickness / 2 + 6)
           const minHalfHeight = Math.max(RECTANGLE_MIN_HEIGHT / 2, shape.thickness / 2 + 6)
           const nextHalfWidth = Math.max(minHalfWidth, deltaX)
@@ -1709,8 +1825,8 @@ export default function App() {
         }
 
         if (shape.kind === 'arrow') {
-          const dx = scenePoint.x - shape.x
-          const dy = scenePoint.y - shape.y
+          const dx = pointer.x - shape.x
+          const dy = pointer.y - shape.y
           const distance = Math.hypot(dx, dy)
           if (distance < 0.5) {
             return
@@ -1718,7 +1834,7 @@ export default function App() {
 
           const nextAngle = Math.atan2(dy, dx)
           const localPoint = toLocalCoordinates(
-            scenePoint,
+            pointer,
             { x: shape.x, y: shape.y },
             nextAngle,
           )
@@ -1756,8 +1872,8 @@ export default function App() {
         }
 
         if (shape.kind === 'line') {
-          const dx = scenePoint.x - shape.x
-          const dy = scenePoint.y - shape.y
+          const dx = pointer.x - shape.x
+          const dy = pointer.y - shape.y
           const distance = Math.hypot(dx, dy)
           if (distance < 0.25) {
             return
@@ -1765,7 +1881,7 @@ export default function App() {
 
           const nextAngle = Math.atan2(dy, dx)
           const localPoint = toLocalCoordinates(
-            scenePoint,
+            pointer,
             { x: shape.x, y: shape.y },
             nextAngle,
           )
@@ -2121,6 +2237,9 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
 
+    const basePoint = { x: worldCenterX, y: worldCenterY }
+    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
+
     const newShapeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -2131,8 +2250,8 @@ export default function App() {
       shape: {
         id: newShapeId,
         kind: 'ring',
-        x: worldCenterX,
-        y: worldCenterY,
+        x: centerPoint.x,
+        y: centerPoint.y,
         radius: RING_DEFAULT_RADIUS,
         thickness: RING_DEFAULT_THICKNESS,
         color: RING_DEFAULT_COLOR,
@@ -2151,6 +2270,9 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
 
+    const basePoint = { x: worldCenterX, y: worldCenterY }
+    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
+
     const newShapeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -2161,8 +2283,8 @@ export default function App() {
       shape: {
         id: newShapeId,
         kind: 'ellipse',
-        x: worldCenterX,
-        y: worldCenterY,
+        x: centerPoint.x,
+        y: centerPoint.y,
         radiusX: ELLIPSE_DEFAULT_RADIUS_X,
         radiusY: ELLIPSE_DEFAULT_RADIUS_Y,
         thickness: ELLIPSE_DEFAULT_THICKNESS,
@@ -2182,6 +2304,9 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
 
+    const basePoint = { x: worldCenterX, y: worldCenterY }
+    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
+
     const newShapeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -2192,8 +2317,8 @@ export default function App() {
       shape: {
         id: newShapeId,
         kind: 'rectangle',
-        x: worldCenterX,
-        y: worldCenterY,
+        x: centerPoint.x,
+        y: centerPoint.y,
         width: RECTANGLE_DEFAULT_WIDTH,
         height: RECTANGLE_DEFAULT_HEIGHT,
         thickness: RECTANGLE_DEFAULT_THICKNESS,
@@ -2213,6 +2338,9 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
 
+    const basePoint = { x: worldCenterX, y: worldCenterY }
+    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
+
     const newShapeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -2223,8 +2351,8 @@ export default function App() {
       shape: {
         id: newShapeId,
         kind: 'arrow',
-        x: worldCenterX,
-        y: worldCenterY,
+        x: centerPoint.x,
+        y: centerPoint.y,
         width: ARROW_DEFAULT_WIDTH,
         height: ARROW_DEFAULT_HEIGHT,
         thickness: ARROW_DEFAULT_THICKNESS,
@@ -2245,6 +2373,9 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
 
+    const basePoint = { x: worldCenterX, y: worldCenterY }
+    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
+
     const newShapeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -2255,8 +2386,8 @@ export default function App() {
       shape: {
         id: newShapeId,
         kind: 'line',
-        x: worldCenterX,
-        y: worldCenterY,
+        x: centerPoint.x,
+        y: centerPoint.y,
         length: LINE_DEFAULT_LENGTH,
         thickness: LINE_DEFAULT_THICKNESS,
         angle: LINE_DEFAULT_ANGLE,
@@ -3197,6 +3328,11 @@ export default function App() {
     : 'Lock editing so you can explore safely'
   const lockButtonIcon = isLocked ? '🔒' : '🔓'
   const isDarkBackground = backgroundTheme === 'dark'
+  const gridButtonLabel = isGridModeEnabled ? 'Hide grid lines' : 'Show grid lines'
+  const gridButtonTitle = isGridModeEnabled
+    ? 'Turn off gridline mode for alignment'
+    : 'Turn on gridline mode for alignment'
+  const gridButtonIcon = isGridModeEnabled ? '[#]' : '[]'
   const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
   const backgroundButtonIcon = isDarkBackground ? '🌑' : '☀️'
   const backgroundButtonTitle = isDarkBackground
@@ -3586,6 +3722,16 @@ export default function App() {
             >
               <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
               <span className="visually-hidden">{backgroundButtonLabel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleGridMode}
+              aria-pressed={isGridModeEnabled}
+              aria-label={gridButtonTitle}
+              title={gridButtonTitle}
+            >
+              <span aria-hidden="true" className="mindmap-actions__icon">{gridButtonIcon}</span>
+              <span className="visually-hidden">{gridButtonLabel}</span>
             </button>
           </div>
           <div className="mindmap-actions__row">
