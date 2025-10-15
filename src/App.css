@@ -14,6 +14,10 @@
   transition: background 180ms ease;
 }
 
+.app-shell--select-mode .mindmap-canvas {
+  cursor: crosshair;
+}
+
 .app-shell--dark .mindmap-canvas {
   background: radial-gradient(circle at center, rgba(79, 70, 229, 0.08), #020409 88%);
 }
@@ -90,6 +94,15 @@
   font-size: 1.35rem;
   font-weight: 700;
   line-height: 1;
+}
+
+.mindmap-marquee {
+  position: absolute;
+  border: 2px solid rgba(56, 189, 248, 0.85);
+  background: rgba(56, 189, 248, 0.18);
+  pointer-events: none;
+  z-index: 4;
+  border-radius: 0.4rem;
 }
 
 .mindmap-toolbar__symbol--detached {

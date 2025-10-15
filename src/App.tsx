@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
@@ -118,6 +119,13 @@ const TEXT_SIZE_LABELS: Record<TextSize, string> = {
   large: 'Large',
 }
 
+type SelectionMarqueeState = {
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
+}
+
 type InteractionState =
   | {
       mode: 'node'
@@ -151,6 +159,21 @@ type InteractionState =
       mode: 'shape-resize'
       pointerId: number
       shapeId: string
+    }
+  | {
+      mode: 'marquee'
+      pointerId: number
+      startSceneX: number
+      startSceneY: number
+      startCanvasX: number
+      startCanvasY: number
+      currentSceneX: number
+      currentSceneY: number
+      currentCanvasX: number
+      currentCanvasY: number
+      initialSelection: string[]
+      additive: boolean
+      appliedSelection: string[] | null
     }
   | {
       mode: 'pan'
@@ -364,7 +387,11 @@ export default function App() {
   const [isLocked, setIsLocked] = useState(false)
   const [backgroundTheme, setBackgroundTheme] = useState<'dark' | 'light'>('dark')
   const [isGridModeEnabled, setIsGridModeEnabled] = useState(false)
+  const [isShiftSelectActive, setShiftSelectActive] = useState(false)
+  const [selectionMarquee, setSelectionMarquee] = useState<SelectionMarqueeState | null>(null)
   const gridModeRef = useRef(isGridModeEnabled)
+  const shiftSelectActiveRef = useRef(false)
+  const isSelectionModeActive = isShiftSelectActive
 
   useEffect(() => {
     if (!isLocked) {
@@ -380,11 +407,11 @@ export default function App() {
     }
 
     if (canvas) {
-      canvas.style.cursor = 'grab'
+      canvas.style.cursor = isSelectionModeActive ? 'crosshair' : 'grab'
     }
 
     pendingTextFocusRef.current = false
-  }, [isLocked])
+  }, [isLocked, isSelectionModeActive])
 
   useEffect(() => {
     // Keep the rest of the page in step with the canvas background choice
@@ -396,6 +423,56 @@ export default function App() {
       document.body.style.backgroundColor = darkColor
     }
   }, [backgroundTheme])
+
+  useEffect(() => {
+    const shouldIgnoreTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false
+      }
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+        return true
+      }
+      return target.isContentEditable
+    }
+
+    const handleShiftKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Shift' || shiftSelectActiveRef.current) {
+        return
+      }
+
+      if (shouldIgnoreTarget(event.target)) {
+        return
+      }
+
+      shiftSelectActiveRef.current = true
+      setShiftSelectActive(true)
+    }
+
+    const handleShiftKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== 'Shift') {
+        return
+      }
+      shiftSelectActiveRef.current = false
+      setShiftSelectActive(false)
+    }
+
+    const handleWindowBlur = () => {
+      if (!shiftSelectActiveRef.current) {
+        return
+      }
+      shiftSelectActiveRef.current = false
+      setShiftSelectActive(false)
+    }
+
+    window.addEventListener('keydown', handleShiftKeyDown)
+    window.addEventListener('keyup', handleShiftKeyUp)
+    window.addEventListener('blur', handleWindowBlur)
+    return () => {
+      window.removeEventListener('keydown', handleShiftKeyDown)
+      window.removeEventListener('keyup', handleShiftKeyUp)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [])
 
   useLayoutEffect(() => {
     if (!isShortcutsOpen) {
@@ -1067,6 +1144,31 @@ export default function App() {
   }, [isGridModeEnabled, drawScene])
 
   useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    if (!isSelectionModeActive) {
+      const interaction = interactionRef.current
+      const hasActiveMarquee =
+        interaction?.mode === 'marquee' && canvas.hasPointerCapture(interaction.pointerId)
+
+      if (!hasActiveMarquee) {
+        setSelectionMarquee(null)
+      }
+
+      if (interaction?.mode === 'marquee' && !canvas.hasPointerCapture(interaction.pointerId)) {
+        interactionRef.current = null
+      }
+    }
+
+    if (!interactionRef.current) {
+      canvas.style.cursor = isSelectionModeActive ? 'crosshair' : 'grab'
+    }
+  }, [isSelectionModeActive])
+
+  useEffect(() => {
     viewRef.current = viewTransform
     drawScene()
   }, [viewTransform, drawScene])
@@ -1224,7 +1326,8 @@ export default function App() {
     contextRef.current = context
     resizeCanvas()
 
-    canvas.style.cursor = 'grab'
+    const defaultCursor = isSelectionModeActive ? 'crosshair' : 'grab'
+    canvas.style.cursor = defaultCursor
 
     const getCanvasPoint = (event: PointerEvent | WheelEvent | MouseEvent) => {
       const rect = canvas.getBoundingClientRect()
@@ -1261,6 +1364,8 @@ export default function App() {
         dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
         dispatch({ type: 'SELECT_SHAPE', shapeId: null })
+      } else if (interaction.mode === 'marquee') {
+        setSelectionMarquee(null)
       }
 
       interactionRef.current = null
@@ -1269,7 +1374,62 @@ export default function App() {
         canvas.releasePointerCapture(pointerId)
       }
 
-      canvas.style.cursor = 'grab'
+      canvas.style.cursor = defaultCursor
+    }
+
+    const selectionsMatch = (previous: string[] | null, next: string[]) => {
+      if (!previous) {
+        return false
+      }
+      if (previous.length !== next.length) {
+        return false
+      }
+      for (let index = 0; index < previous.length; index += 1) {
+        if (previous[index] !== next[index]) {
+          return false
+        }
+      }
+      return true
+    }
+
+    const computeMarqueeSelection = (interaction: {
+      startSceneX: number
+      startSceneY: number
+      currentSceneX: number
+      currentSceneY: number
+      additive: boolean
+      initialSelection: string[]
+    }) => {
+      const minX = Math.min(interaction.startSceneX, interaction.currentSceneX)
+      const maxX = Math.max(interaction.startSceneX, interaction.currentSceneX)
+      const minY = Math.min(interaction.startSceneY, interaction.currentSceneY)
+      const maxY = Math.max(interaction.startSceneY, interaction.currentSceneY)
+
+      const insideIds = new Set<string>()
+      for (const node of nodesRef.current) {
+        if (node.x >= minX && node.x <= maxX && node.y >= minY && node.y <= maxY) {
+          insideIds.add(node.id)
+        }
+      }
+
+      if (interaction.additive) {
+        const baseline = [...interaction.initialSelection]
+        const baselineSet = new Set(baseline)
+        for (const node of nodesRef.current) {
+          if (insideIds.has(node.id) && !baselineSet.has(node.id)) {
+            baseline.push(node.id)
+          }
+        }
+        return baseline
+      }
+
+      const selection: string[] = []
+      for (const node of nodesRef.current) {
+        if (insideIds.has(node.id)) {
+          selection.push(node.id)
+        }
+      }
+      return selection
     }
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -1277,7 +1437,8 @@ export default function App() {
         return
       }
 
-      const scenePoint = getScenePoint(event)
+      const canvasPoint = getCanvasPoint(event)
+      const scenePoint = getScenePointFromCanvas(canvasPoint.x, canvasPoint.y)
       const { scale } = viewRef.current
       const handleHalfSize = SHAPE_HANDLE_SCREEN_SIZE / scale / 2
 
@@ -1426,6 +1587,11 @@ export default function App() {
         }
 
         selectedNodeRef.current = [...nextSelection]
+
+        if (isSelectionModeActive) {
+          event.preventDefault()
+          return
+        }
 
         if (isLocked) {
           event.preventDefault()
@@ -1647,6 +1813,35 @@ export default function App() {
       }
 
       if (event.button === 0 || event.button === 1) {
+        if (isSelectionModeActive && event.button === 0) {
+          const additive = event.shiftKey || event.metaKey || event.ctrlKey
+          interactionRef.current = {
+            mode: 'marquee',
+            pointerId: event.pointerId,
+            startSceneX: scenePoint.x,
+            startSceneY: scenePoint.y,
+            startCanvasX: canvasPoint.x,
+            startCanvasY: canvasPoint.y,
+            currentSceneX: scenePoint.x,
+            currentSceneY: scenePoint.y,
+            currentCanvasX: canvasPoint.x,
+            currentCanvasY: canvasPoint.y,
+            initialSelection: [...selectedNodeRef.current],
+            additive,
+            appliedSelection: null,
+          }
+          setSelectionMarquee({
+            startX: canvasPoint.x,
+            startY: canvasPoint.y,
+            currentX: canvasPoint.x,
+            currentY: canvasPoint.y,
+          })
+          canvas.setPointerCapture(event.pointerId)
+          canvas.style.cursor = 'crosshair'
+          event.preventDefault()
+          return
+        }
+
         interactionRef.current = {
           mode: 'pan',
           pointerId: event.pointerId,
@@ -1669,7 +1864,36 @@ export default function App() {
         return
       }
 
-      if (isLocked && interaction.mode !== 'pan') {
+      if (isLocked && interaction.mode !== 'pan' && interaction.mode !== 'marquee') {
+        return
+      }
+
+      if (interaction.mode === 'marquee') {
+        const { x, y } = getCanvasPoint(event)
+        const scenePoint = getScenePointFromCanvas(x, y)
+
+        interaction.currentSceneX = scenePoint.x
+        interaction.currentSceneY = scenePoint.y
+        interaction.currentCanvasX = x
+        interaction.currentCanvasY = y
+
+        setSelectionMarquee({
+          startX: interaction.startCanvasX,
+          startY: interaction.startCanvasY,
+          currentX: x,
+          currentY: y,
+        })
+
+        const nextSelection = computeMarqueeSelection(interaction)
+        const hasChanged = !selectionsMatch(interaction.appliedSelection, nextSelection)
+        if (hasChanged) {
+          dispatch({
+            type: 'SET_SELECTED_NODES',
+            nodeIds: nextSelection,
+          })
+        }
+        interaction.appliedSelection = [...nextSelection]
+        selectedNodeRef.current = [...nextSelection]
         return
       }
 
@@ -1930,6 +2154,20 @@ export default function App() {
     }
 
     const handlePointerUp = (event: PointerEvent) => {
+      const interaction = interactionRef.current
+      if (interaction && interaction.pointerId === event.pointerId && interaction.mode === 'marquee') {
+        if (!interaction.appliedSelection) {
+          const finalSelection = computeMarqueeSelection(interaction)
+          dispatch({
+            type: 'SET_SELECTED_NODES',
+            nodeIds: finalSelection,
+          })
+          interaction.appliedSelection = [...finalSelection]
+          selectedNodeRef.current = [...finalSelection]
+        } else {
+          selectedNodeRef.current = [...interaction.appliedSelection]
+        }
+      }
       finishInteraction(event.pointerId, true)
     }
 
@@ -2020,6 +2258,7 @@ export default function App() {
     adjustZoom,
     dispatch,
     isLocked,
+    isSelectionModeActive,
     getNodeRadius,
     measureAnnotation,
     requestTextEditorFocus,
@@ -3280,7 +3519,17 @@ export default function App() {
   const actionsBodyId = 'mindmap-actions-body'
   const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
   const actionsClassName = `mindmap-actions${areActionsCollapsed ? ' mindmap-actions--collapsed' : ''}`
-  const appShellClassName = `app-shell app-shell--${backgroundTheme}`
+  const appShellClassName = `app-shell app-shell--${backgroundTheme}${
+    isSelectionModeActive ? ' app-shell--select-mode' : ''
+  }`
+  const marqueeStyle: CSSProperties | undefined = selectionMarquee
+    ? {
+        left: `${Math.min(selectionMarquee.startX, selectionMarquee.currentX)}px`,
+        top: `${Math.min(selectionMarquee.startY, selectionMarquee.currentY)}px`,
+        width: `${Math.abs(selectionMarquee.currentX - selectionMarquee.startX)}px`,
+        height: `${Math.abs(selectionMarquee.currentY - selectionMarquee.startY)}px`,
+      }
+    : undefined
   const isEditingNode = selectedTextTarget?.kind === 'node'
   const isEditingAnnotation = selectedTextTarget?.kind === 'annotation'
   const textEditorLabel = isEditingNode ? 'Node text' : isEditingAnnotation ? 'Text box text' : 'Edit text'
@@ -3345,6 +3594,7 @@ export default function App() {
   return (
     <div className={appShellClassName}>
       <canvas ref={canvasRef} className="mindmap-canvas" />
+      {marqueeStyle ? <div className="mindmap-marquee" style={marqueeStyle} /> : null}
       <div className={toolbarClassName}>
         <div className="mindmap-toolbar__header">
           <button
