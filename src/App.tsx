@@ -298,6 +298,7 @@ export default function App() {
       return {
         canLink: false,
         message: 'Select two ideas so the first can become the parent of the second',
+        mode: 'link' as const,
       }
     }
 
@@ -306,6 +307,7 @@ export default function App() {
       return {
         canLink: false,
         message: 'Select two ideas so the first can become the parent of the second',
+        mode: 'link' as const,
       }
     }
 
@@ -313,6 +315,7 @@ export default function App() {
       return {
         canLink: false,
         message: 'Pick two different ideas to create a parent-child link',
+        mode: 'link' as const,
       }
     }
 
@@ -322,6 +325,7 @@ export default function App() {
         return {
           canLink: false,
           message: 'Cannot create a parent-child loop between these ideas',
+          mode: 'link' as const,
         }
       }
       const ancestor = nodeById.get(ancestorId)
@@ -333,14 +337,16 @@ export default function App() {
 
     if (potentialChild.parentId === potentialParent.id) {
       return {
-        canLink: false,
-        message: 'These ideas already share a parent-child link',
+        canLink: true,
+        message: 'Remove the parent-child link between these ideas',
+        mode: 'unlink' as const,
       }
     }
 
     return {
       canLink: true,
       message: 'Make the first selected idea the parent of the second',
+      mode: 'link' as const,
     }
   }, [nodeById, selectedNodes])
 
@@ -2390,6 +2396,11 @@ export default function App() {
     }
 
     if (potentialChild.parentId === potentialParent.id) {
+      dispatch({
+        type: 'UPDATE_NODE',
+        nodeId: potentialChild.id,
+        updates: { parentId: null },
+      })
       return
     }
 
@@ -3645,7 +3656,11 @@ export default function App() {
               type="button"
               onClick={handleLinkParentChild}
               title={parentChildLinkButtonTitle}
-              aria-label="Create parent-child link"
+              aria-label={
+                parentChildLinkStatus.mode === 'unlink'
+                  ? 'Remove parent-child link'
+                  : 'Create parent-child link'
+              }
               className="mindmap-toolbar__symbol-button"
               disabled={isParentChildButtonDisabled}
             >
@@ -3653,11 +3668,13 @@ export default function App() {
                 aria-hidden="true"
                 className="mindmap-toolbar__symbol mindmap-toolbar__symbol--hierarchy"
             >
-              {'->'}
+              {'—'}
             </span>
               <span className="visually-hidden">
                 {isParentChildButtonDisabled
                   ? parentChildLinkStatus.message
+                  : parentChildLinkStatus.mode === 'unlink'
+                  ? 'Remove the parent-child link between the selected ideas'
                   : 'Set the first selected idea as the parent of the second'}
               </span>
             </button>
