@@ -46,12 +46,23 @@ Selection, Editing, and History (app behaviors to consider)
 - Text size must be one of small/medium/large; non-conforming values are normalized to medium.
 
 Placement Guidance (defaults, not hard rules)
-- Siblings: 200–320 px horizontal spacing often reads well.
-- Vertical tier step: 140–200 px between parent and children to avoid connector tangles.
-- Forest spacing: leave 300–600 px between roots.
-- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160–220 px per ring.
-- Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20.
-- Angles: use small offsets (0.003–0.02 radians) for “almost horizontal/vertical” lines to stay crisp.
+- Think in polar rings around each parent. Spread siblings evenly around a circle or gentle arc so their bounding boxes (node width about 200 px) do not touch. Leave at least 120 px of empty space between sibling edges.
+- Siblings: 200-320 px center-to-center spacing keeps branches readable. Mirror spacing left and right so the map feels balanced.
+- Vertical tier step: drop children 160-220 px below parents unless you intentionally orbit them. This keeps connectors clear of labels.
+- Forest spacing: separate root clusters by 400-640 px horizontally and align their vertical centers within plus or minus 60 px so the canvas looks orderly.
+- Orbits: when adding concentric rings or ellipses around a cluster, grow outer radii by about 160-220 px per ring. Keep all enclosed nodes inside the inner radius minus 60 px.
+- Radial sweeps: for four or more children, use angles like negative 150, negative 60, 30, and 120 degrees (convert to radians) to avoid overlaps. For six or more, stagger two arcs (upper and lower) with 40 degree gaps.
+- Edge clearance: keep every node at least 200 px from the current canvas boundary (about plus or minus 1200 px in the default view) so users are not forced to pan immediately.
+- Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20. Offset captions diagonally (x + 80, y - 80) so they do not sit on top of connectors.
+- Cross-links: route lateral relationships between clusters with start and end nodes that already have free space around them. Avoid crossing more than one branch by nudging linked nodes plus or minus 40 px.
+- Angles: use small offsets (0.003-0.02 radians) for almost horizontal or vertical lines to stay crisp.
+
+Spatial Composition Checklist (use before finalizing coordinates)
+1) Scan each quadrant (top-left, top-right, bottom-left, bottom-right). Try to keep the node count per quadrant within a plus or minus 1 range so the layout feels balanced.
+2) Draw imaginary circles around parents (radius 240-320 px). Ensure children stay on those circles without overlapping another parent's circle.
+3) Check overlap risk: if abs(x1 - x2) < 220 and abs(y1 - y2) < 140, push nodes apart until both differences exceed those thresholds.
+4) Give long text labels extra width: slide the node 40-60 px away from neighbors to allow wrapping.
+5) When space feels tight, rotate the branch by 15-25 degrees or move the parent slightly instead of stacking nodes.
 
 Axis / Banner Pattern (recipe)
 - A horizontal banner line with a nearby annotation.
@@ -83,10 +94,10 @@ Example shape:
 }
 
 Orbit Placement (recipe)
-1) Center orbit shapes on a cluster’s core (cx, cy).
-2) Start with an inner ellipse (thickness 12–16), then add ~160–220 px to radiusX and radiusY for each outer ring.
+1) Center orbit shapes on a clusterâ€™s core (cx, cy).
+2) Start with an inner ellipse (thickness 12â€“16), then add ~160â€“220 px to radiusX and radiusY for each outer ring.
 3) Place labels using the tangent guideline under Placement Guidance.
-4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20–40 px for legibility.
+4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20â€“40 px for legibility.
 
 Color and Emphasis
 - Keep palette consistent inside a cluster; sample exact hexes. Default node color is #4f46e5 when omitted.
@@ -134,7 +145,7 @@ Forest + Axis Example (two roots, banner line with caption, bridge between clust
 
 LLM Workflow Checklist
 1) Outline first (plain text bullets). Identify roots vs children.
-2) Draft nodes with ids and parentId; choose coordinates following spacing defaults.
+2) Draft nodes with ids and parentId; choose coordinates following spacing defaults and the spatial checklist above.
 3) Add annotations (captions/labels) with textSize small/medium/large.
 4) Add shapes for orbits, banners, frames; keep sizes positive and thickness > 0.
 5) Add crossLinks sparingly to suggest lateral connections.
