@@ -46,12 +46,15 @@ Selection, Editing, and History (app behaviors to consider)
 - Text size must be one of small/medium/large; non-conforming values are normalized to medium.
 
 Placement Guidance (defaults, not hard rules)
-- Siblings: 200–320 px horizontal spacing often reads well.
-- Vertical tier step: 140–200 px between parent and children to avoid connector tangles.
-- Forest spacing: leave 300–600 px between roots.
-- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160–220 px per ring.
-- Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20.
-- Angles: use small offsets (0.003–0.02 radians) for “almost horizontal/vertical” lines to stay crisp.
+- Think in bounding boxes. Leave at least 60 px of empty space between any two node rectangles (width = text length * 12 px + 64 padding, height = text lines * 28 px + 48). Increase clearance to 90+ px for large text.
+- Siblings: spread children around the parent in a fan, using polar angles from -120 degrees to +120 degrees so connectors are readable. Use 220-320 px radial distance for medium text; expand to 320-420 px for large labels. Avoid placing two siblings at the exact same angle.
+- Vertical tier step: keep 160-220 px between parent and child y positions even when staggering horizontally. Combine radial and vertical offsets so connectors form a gentle slope instead of a straight overlap.
+- Forest spacing: leave at least 360-520 px between root bounding boxes. If a cluster grows wider, re-center the subtree so gaps between cluster edges stay 180 px or more.
+- Balance quadrants. If two consecutive branches land in the same quadrant, push the next branch to the opposite side (mirror the angle) or move it to a lower tier. Aim for an even count of nodes per quadrant so the canvas feels balanced.
+- Orbit placement: when adding concentric rings or ellipses around a cluster, start at radiusX/radiusY close to the cluster radius plus 140 px and add 160-220 px per ring. Ensure the outermost ring clears the farthest node bounding box by at least 120 px.
+- Annotation floaters: keep at least 120 px clear from the nearest node center. When labeling an orbit, use the tangent guideline (label.x = cx + radiusX + 60; label.y = cy + 20) and nudge away from other annotations by 80 px.
+- Cross-links: route by choosing anchor nodes whose connecting arc will not cross a third node bounding box. If crossings are unavoidable, adjust coordinates by plus or minus 40 px until the curve clears all boxes.
+- Angles: use small offsets (0.003-0.02 radians) for almost horizontal or vertical lines to stay crisp.
 
 Axis / Banner Pattern (recipe)
 - A horizontal banner line with a nearby annotation.
@@ -83,10 +86,10 @@ Example shape:
 }
 
 Orbit Placement (recipe)
-1) Center orbit shapes on a cluster’s core (cx, cy).
-2) Start with an inner ellipse (thickness 12–16), then add ~160–220 px to radiusX and radiusY for each outer ring.
+1) Center orbit shapes on a cluster's core (cx, cy).
+2) Start with an inner ellipse (thickness 12-16), then add ~160-220 px to radiusX and radiusY for each outer ring.
 3) Place labels using the tangent guideline under Placement Guidance.
-4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20–40 px for legibility.
+4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20-40 px for legibility.
 
 Color and Emphasis
 - Keep palette consistent inside a cluster; sample exact hexes. Default node color is #4f46e5 when omitted.
