@@ -46,12 +46,27 @@ Selection, Editing, and History (app behaviors to consider)
 - Text size must be one of small/medium/large; non-conforming values are normalized to medium.
 
 Placement Guidance (defaults, not hard rules)
-- Siblings: 200–320 px horizontal spacing often reads well.
-- Vertical tier step: 140–200 px between parent and children to avoid connector tangles.
-- Forest spacing: leave 300–600 px between roots.
-- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160–220 px per ring.
+- Siblings: 200-320 px horizontal spacing often reads well.
+- Vertical tier step: 140-200 px between parent and children to avoid connector tangles.
+- Forest spacing: leave 300-600 px between roots.
+- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by about 160-220 px per ring.
 - Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20.
-- Angles: use small offsets (0.003–0.02 radians) for “almost horizontal/vertical” lines to stay crisp.
+- Angles: use small offsets (0.003-0.02 radians) for almost horizontal/vertical lines to stay crisp.
+
+Spatial Composition Rules (prevent overlaps)
+- Respect node footprints. Treat every node as a 200 x 120 px rectangle centred on (x, y); keep footprints from intersecting.
+- Balance clusters. For each parent, fan children around a 180 degree arc (left/right) or 240 degree arc (radial) so the centroid stays near the parent.
+- Stagger siblings vertically by at least 60 px when their texts are long (24+ characters) to avoid label collisions.
+- Mirror distances across the vertical axis for symmetric branches; shift positions plus or minus 40 px if texts differ in length.
+- Leave a 120 px buffer around shape boundaries so nodes never touch orbit lines or rectangle edges.
+- When roots share space, offset their y positions by plus or minus 80 px to create a gentle diagonal rather than a straight line.
+
+Spatial Workflow Heuristics (LLM sanity checks)
+1) After placing nodes, compute pairwise deltas. If |x1 - x2| < 200 and |y1 - y2| < 120, push one node away until the thresholds hold.
+2) Ensure each branch occupies a unique compass sector: left (negative x), right (positive x), upper (negative y), lower (positive y). Avoid stacking multiple branches in the same narrow wedge.
+3) Keep the entire map inside a virtual 3200 x 2000 px canvas centred at the origin so exports stay visible without zooming.
+4) When adding new children, check the nearest neighbour direction; if the angle difference is less than 25 degrees, rotate the newcomer around the parent by plus or minus 45 degrees.
+5) For annotations, orbit them outside the densest area: distance greater than or equal to max(200, parent radius + 80).
 
 Axis / Banner Pattern (recipe)
 - A horizontal banner line with a nearby annotation.
@@ -83,10 +98,10 @@ Example shape:
 }
 
 Orbit Placement (recipe)
-1) Center orbit shapes on a cluster’s core (cx, cy).
-2) Start with an inner ellipse (thickness 12–16), then add ~160–220 px to radiusX and radiusY for each outer ring.
+1) Center orbit shapes on a clusterâ€™s core (cx, cy).
+2) Start with an inner ellipse (thickness 12â€“16), then add ~160â€“220 px to radiusX and radiusY for each outer ring.
 3) Place labels using the tangent guideline under Placement Guidance.
-4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20–40 px for legibility.
+4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20â€“40 px for legibility.
 
 Color and Emphasis
 - Keep palette consistent inside a cluster; sample exact hexes. Default node color is #4f46e5 when omitted.
@@ -135,11 +150,12 @@ Forest + Axis Example (two roots, banner line with caption, bridge between clust
 LLM Workflow Checklist
 1) Outline first (plain text bullets). Identify roots vs children.
 2) Draft nodes with ids and parentId; choose coordinates following spacing defaults.
-3) Add annotations (captions/labels) with textSize small/medium/large.
-4) Add shapes for orbits, banners, frames; keep sizes positive and thickness > 0.
-5) Add crossLinks sparingly to suggest lateral connections.
-6) Validate: arrays exist, required node fields present, textSize in {small, medium, large}.
-7) Optional: include metadata/exportedAt for provenance.
+3) Run the spatial heuristics above to spread nodes until no footprints overlap.
+4) Add annotations (captions/labels) with textSize small/medium/large.
+5) Add shapes for orbits, banners, frames; keep sizes positive and thickness > 0.
+6) Add crossLinks sparingly to suggest lateral connections.
+7) Validate: arrays exist, required node fields present, textSize in {small, medium, large}. Confirm the full map fits inside plus or minus 1600 x plus or minus 1000.
+8) Optional: include metadata/exportedAt for provenance.
 
 Import/Export Behavior Notes (app expectations)
 - Extra top-level keys are ignored; the four arrays must exist (can be empty).
