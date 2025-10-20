@@ -46,12 +46,28 @@ Selection, Editing, and History (app behaviors to consider)
 - Text size must be one of small/medium/large; non-conforming values are normalized to medium.
 
 Placement Guidance (defaults, not hard rules)
-- Siblings: 200–320 px horizontal spacing often reads well.
-- Vertical tier step: 140–200 px between parent and children to avoid connector tangles.
-- Forest spacing: leave 300–600 px between roots.
-- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160–220 px per ring.
+- Siblings: 200-320 px horizontal spacing keeps labels readable.
+- Vertical tier step: 140-200 px between parent and children to avoid connector tangles.
+- Forest spacing: leave 300-600 px between roots.
+- Orbits: when adding concentric rings/ellipses around a cluster, grow outer radii by ~160-220 px per ring.
 - Annotations: keep at least 100 px clear from the nearest node; orbit labels sit well near ellipse tangents: label.x = cx + radiusX + 60; label.y = cy + 20.
-- Angles: use small offsets (0.003–0.02 radians) for “almost horizontal/vertical” lines to stay crisp.
+- Angles: use small offsets (0.003-0.02 radians) for almost horizontal or vertical lines to stay crisp.
+
+Spatial Awareness Playbook (prevent overlaps)
+- Start every cluster by picking a center point, then distribute children evenly around the parent by angle (for example, left, right, upper-right, lower-left) before assigning exact coordinates.
+- Give each node a personal space radius of at least 120 px. Keep the distance between any two node centers greater than the sum of their radii (roughly text width / 2 + 60 px buffer).
+- Stagger siblings vertically by at least 80 px so labels do not stack directly.
+- Mirror large branches across quadrants to balance the map. If one branch fills the north-east quadrant, anchor the next branch in the south-west quadrant unless the topic demands a different story.
+- When laying out forests (multiple roots), sketch bounding boxes (width x height) for each cluster, leave at least 120 px between boxes, and offset their centers diagonally instead of lining them up in a single row.
+- Rotate the entire subtree if it drifts too close to another cluster. Changing the main angle by 15 degrees often resolves collisions without rewriting text.
+- Keep shapes and annotations slightly outside the node orbit: ring radius should exceed the farthest child distance by 60-90 px; banner lines sit 80-120 px away from the nearest node.
+
+Collision Check Routine (run mentally before finalizing coordinates)
+1) For every node, ensure no other node falls within a 120 px radius of its center.
+2) For each parent, verify that children alternate sides (left/right or above/below) so connectors cross less.
+3) Draw an imaginary rectangle around each cluster (min/max x/y of its nodes). Confirm rectangles do not overlap; shift clusters by 60-120 px if they do.
+4) Confirm shapes (rings, ellipses, rectangles) fully enclose their target nodes with at least a 40 px margin on every side.
+5) Place annotations where they have a 100 px clear line of sight to the referenced node or shape.
 
 Axis / Banner Pattern (recipe)
 - A horizontal banner line with a nearby annotation.
@@ -83,10 +99,10 @@ Example shape:
 }
 
 Orbit Placement (recipe)
-1) Center orbit shapes on a cluster’s core (cx, cy).
-2) Start with an inner ellipse (thickness 12–16), then add ~160–220 px to radiusX and radiusY for each outer ring.
+1) Center orbit shapes on a cluster's core (cx, cy).
+2) Start with an inner ellipse (thickness 12-16), then add ~160-220 px to radiusX and radiusY for each outer ring.
 3) Place labels using the tangent guideline under Placement Guidance.
-4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20–40 px for legibility.
+4) For a node along an ellipse at angle t: node.x = cx + radiusX * cos(t); node.y = cy + radiusY * sin(t); then nudge 20-40 px for legibility.
 
 Color and Emphasis
 - Keep palette consistent inside a cluster; sample exact hexes. Default node color is #4f46e5 when omitted.
