@@ -111,7 +111,6 @@ import {
   type NodeLabelLayout,
 } from './utils/typography'
 import { calculateFitView, type CanvasSize, type ViewTransform } from './utils/view'
-import { convertDataUrlToBytes, createPdfBytesFromJpeg } from './utils/pdf'
 import { renderMindMapSceneToCanvas } from './utils/exportScene'
 import './App.css'
 const TEXT_SIZE_LABELS: Record<TextSize, string> = {
@@ -3018,35 +3017,6 @@ export default function App() {
     )
   }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
 
-  const handleExportPdf = useCallback(() => {
-    closeExportMenu()
-    const result = renderMindMapSceneToCanvas(
-      {
-        nodes,
-        annotations,
-        shapes,
-        crossLinks,
-      },
-      { backgroundTheme },
-    )
-
-    if (!result) {
-      window.alert('Unable to export PDF right now. Please try again.')
-      return
-    }
-
-    const imageDataUrl = result.canvas.toDataURL('image/jpeg', 0.92)
-    const imageBytes = convertDataUrlToBytes(imageDataUrl)
-    const pdfBytes = createPdfBytesFromJpeg(imageBytes, result.width, result.height)
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'mindmap.pdf'
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
-
   const sanitizeImportedNodes = useCallback((value: unknown) => {
     if (!Array.isArray(value)) {
       return null
@@ -3911,9 +3881,6 @@ export default function App() {
               </button>
               <button type="button" onClick={handleExportPng} role="menuitem">
                 Export PNG
-              </button>
-              <button type="button" onClick={handleExportPdf} role="menuitem">
-                Export PDF
               </button>
             </div>
           ) : null}
