@@ -112,6 +112,7 @@ import {
 } from './utils/typography'
 import { calculateFitView, type CanvasSize, type ViewTransform } from './utils/view'
 import { convertDataUrlToBytes, createPdfBytesFromJpeg } from './utils/pdf'
+import { renderMindMapSceneToCanvas } from './utils/exportScene'
 import './App.css'
 const TEXT_SIZE_LABELS: Record<TextSize, string> = {
   small: 'Small',
@@ -2985,48 +2986,58 @@ export default function App() {
 
   const handleExportPng = useCallback(() => {
     closeExportMenu()
-    const canvas = canvasRef.current
-    if (!canvas) {
+    const result = renderMindMapSceneToCanvas(
+      {
+        nodes,
+        annotations,
+        shapes,
+        crossLinks,
+      },
+      { backgroundTheme },
+    )
+
+    if (!result) {
+      window.alert('Unable to export PNG right now. Please try again.')
       return
     }
 
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        return
-      }
-
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = 'mindmap.png'
-      anchor.click()
-      URL.revokeObjectURL(url)
-    })
-  }, [closeExportMenu])
+    result.canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          window.alert('Unable to export PNG right now. Please try again.')
+          return
+        }
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = 'mindmap.png'
+        anchor.click()
+        URL.revokeObjectURL(url)
+      },
+      'image/png',
+    )
+  }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
 
   const handleExportPdf = useCallback(() => {
     closeExportMenu()
-    const canvas = canvasRef.current
-    if (!canvas) {
+    const result = renderMindMapSceneToCanvas(
+      {
+        nodes,
+        annotations,
+        shapes,
+        crossLinks,
+      },
+      { backgroundTheme },
+    )
+
+    if (!result) {
+      window.alert('Unable to export PDF right now. Please try again.')
       return
     }
 
-    const { width, height } = canvas
-    const exportCanvas = document.createElement('canvas')
-    exportCanvas.width = width
-    exportCanvas.height = height
-    const context = exportCanvas.getContext('2d')
-    if (!context) {
-      return
-    }
-
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, width, height)
-    context.drawImage(canvas, 0, 0)
-
-    const imageDataUrl = exportCanvas.toDataURL('image/jpeg', 0.92)
+    const imageDataUrl = result.canvas.toDataURL('image/jpeg', 0.92)
     const imageBytes = convertDataUrlToBytes(imageDataUrl)
-    const pdfBytes = createPdfBytesFromJpeg(imageBytes, width, height)
+    const pdfBytes = createPdfBytesFromJpeg(imageBytes, result.width, result.height)
     const blob = new Blob([pdfBytes], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -3034,7 +3045,7 @@ export default function App() {
     anchor.download = 'mindmap.pdf'
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [closeExportMenu])
+  }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
 
   const sanitizeImportedNodes = useCallback((value: unknown) => {
     if (!Array.isArray(value)) {
