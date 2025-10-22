@@ -102,6 +102,8 @@ const expandBoundsWithRect = (
   expandBoundsWithPoint(bounds, centerX + width, centerY + height)
 }
 
+const PNG_EXPORT_SCALE_MULTIPLIER = Math.SQRT1_2 // scale down to roughly half the file size while keeping detail
+
 const evaluateQuadraticPoint = (t: number, start: Point, control: Point, end: Point): Point => {
   const oneMinusT = 1 - t
   const oneMinusTSquared = oneMinusT * oneMinusT
@@ -325,7 +327,8 @@ export const renderMindMapSceneToCanvas = (
   const contentWidth = Math.max(maxX - minX, 1)
   const contentHeight = Math.max(maxY - minY, 1)
 
-  const scale = window.devicePixelRatio || 1
+  const pixelRatio = window.devicePixelRatio || 1
+  const scale = Math.max(pixelRatio * PNG_EXPORT_SCALE_MULTIPLIER, 0.5)
   const exportCanvas = document.createElement('canvas')
   exportCanvas.width = Math.round(contentWidth * scale)
   exportCanvas.height = Math.round(contentHeight * scale)
