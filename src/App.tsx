@@ -10,17 +10,25 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
+  MindMapActionsPanel,
+  type MindMapActionGroup,
+} from './components/MindMapActionsPanel'
+import {
+  MindMapNavigation,
+} from './components/MindMapNavigation'
+import {
+  MindMapToolbar,
+  type ToolbarActionButton,
+} from './components/MindMapToolbar'
+import { MindMapWorkspacePanel } from './components/MindMapWorkspacePanel'
+import {
   DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
   TEXT_SIZE_CHOICES,
   normalizeTextSize,
   type MindMapAnnotation,
-  type MindMapEllipse,
-  type MindMapArrow,
   type MindMapNode,
   type MindMapCrossLink,
-  type MindMapRectangle,
-  type MindMapLine,
   type MindMapShape,
   type TextSize,
   useMindMap,
@@ -99,6 +107,11 @@ import {
   toLocalCoordinates,
   tracePolygon,
 } from './utils/geometry'
+import { downloadBlob } from './utils/download'
+import {
+  parseImportedMindMapDocument,
+  serializeMindMapDocument,
+} from './utils/mindMapDocument'
 import {
   calculateNodeLabelLayout,
   calculateNodeRadius,
@@ -113,6 +126,7 @@ import {
 import { calculateFitView, type CanvasSize, type ViewTransform } from './utils/view'
 import { renderMindMapSceneToCanvas } from './utils/exportScene'
 import './App.css'
+
 const TEXT_SIZE_LABELS: Record<TextSize, string> = {
   small: 'Small',
   medium: 'Medium',
@@ -2962,25 +2976,14 @@ export default function App() {
 
   const handleExportJson = useCallback(() => {
     closeExportMenu()
-    const payload = JSON.stringify(
-      {
-        nodes: nodes.map((node) => ({ ...node })),
-        annotations: annotations.map((annotation) => ({ ...annotation })),
-        shapes: shapes.map((shape) => ({ ...shape })),
-        crossLinks: crossLinks.map((link) => ({ ...link })),
-        exportedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    )
-
+    const payload = serializeMindMapDocument({
+      nodes,
+      annotations,
+      shapes,
+      crossLinks,
+    })
     const blob = new Blob([payload], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'mindmap.json'
-    anchor.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, 'mindmap.json')
   }, [annotations, closeExportMenu, crossLinks, nodes, shapes])
 
   const handleExportPng = useCallback(() => {
@@ -3006,310 +3009,11 @@ export default function App() {
           window.alert('Unable to export PNG right now. Please try again.')
           return
         }
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = 'mindmap.png'
-        anchor.click()
-        URL.revokeObjectURL(url)
+        downloadBlob(blob, 'mindmap.png')
       },
       'image/png',
     )
   }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
-
-  const sanitizeImportedNodes = useCallback((value: unknown) => {
-    if (!Array.isArray(value)) {
-      return null
-    }
-
-    const sanitized = value
-      .filter((item): item is MindMapNode => {
-        if (!item || typeof item !== 'object') {
-          return false
-        }
-        const node = item as Partial<MindMapNode>
-        return (
-          typeof node.id === 'string' &&
-          (typeof node.parentId === 'string' || node.parentId === null) &&
-          typeof node.text === 'string' &&
-          typeof node.x === 'number' &&
-          typeof node.y === 'number'
-        )
-      })
-      .map((node) => ({
-        ...node,
-        color: typeof node.color === 'string' ? node.color : DEFAULT_NODE_COLOR,
-        textSize: normalizeTextSize((node as { textSize?: unknown }).textSize),
-      }))
-
-    if (sanitized.length === 0) {
-      return null
-    }
-
-    return sanitized
-  }, [])
-
-  const sanitizeImportedAnnotations = useCallback((value: unknown) => {
-    if (!Array.isArray(value)) {
-      return []
-    }
-
-    return value
-      .filter((item): item is MindMapAnnotation => {
-        if (!item || typeof item !== 'object') {
-          return false
-        }
-        const annotation = item as Partial<MindMapAnnotation>
-        return (
-          typeof annotation.id === 'string' &&
-          typeof annotation.text === 'string' &&
-          typeof annotation.x === 'number' &&
-          typeof annotation.y === 'number'
-        )
-      })
-      .map((annotation) => ({
-        ...annotation,
-        textSize: normalizeTextSize((annotation as { textSize?: unknown }).textSize),
-      }))
-  }, [])
-
-  const sanitizeImportedShapes = useCallback((value: unknown) => {
-    if (!Array.isArray(value)) {
-      return []
-    }
-
-    return value.reduce<MindMapShape[]>((accumulator, item) => {
-      if (!item || typeof item !== 'object') {
-        return accumulator
-      }
-
-      const shape = item as Partial<MindMapShape> & { kind?: string }
-
-      if (shape.kind === 'ring') {
-        if (
-          typeof shape.id !== 'string' ||
-          typeof shape.x !== 'number' ||
-          typeof shape.y !== 'number' ||
-          typeof shape.radius !== 'number' ||
-          typeof shape.thickness !== 'number'
-        ) {
-          return accumulator
-        }
-
-        const radius = Math.max(RING_MIN_RADIUS, Math.abs(shape.radius))
-        const thickness = Math.max(1, Math.abs(shape.thickness))
-        const color = typeof shape.color === 'string' ? shape.color : RING_DEFAULT_COLOR
-
-        accumulator.push({
-          id: shape.id,
-          kind: 'ring',
-          x: shape.x,
-          y: shape.y,
-          radius,
-          thickness: Math.min(thickness, radius * 1.5),
-          color,
-        })
-        return accumulator
-      }
-
-      if (shape.kind === 'ellipse') {
-        const ellipse = shape as Partial<MindMapEllipse>
-
-        if (
-          typeof ellipse.id !== 'string' ||
-          typeof ellipse.x !== 'number' ||
-          typeof ellipse.y !== 'number' ||
-          typeof ellipse.radiusX !== 'number' ||
-          typeof ellipse.radiusY !== 'number' ||
-          typeof ellipse.thickness !== 'number'
-        ) {
-          return accumulator
-        }
-
-        const radiusX = Math.max(ELLIPSE_MIN_RADIUS_X, Math.abs(ellipse.radiusX))
-        const radiusY = Math.max(ELLIPSE_MIN_RADIUS_Y, Math.abs(ellipse.radiusY))
-        const thickness = Math.max(1, Math.abs(ellipse.thickness))
-        const color = typeof ellipse.color === 'string' ? ellipse.color : ELLIPSE_DEFAULT_COLOR
-        const maxThickness = Math.min(radiusX, radiusY)
-
-        accumulator.push({
-          id: ellipse.id,
-          kind: 'ellipse',
-          x: ellipse.x,
-          y: ellipse.y,
-          radiusX,
-          radiusY,
-          thickness: Math.min(thickness, maxThickness),
-          color,
-        })
-      }
-
-      if (shape.kind === 'rectangle') {
-        const rectangle = shape as Partial<MindMapRectangle>
-
-        if (
-          typeof rectangle.id !== 'string' ||
-          typeof rectangle.x !== 'number' ||
-          typeof rectangle.y !== 'number' ||
-          typeof rectangle.width !== 'number' ||
-          typeof rectangle.height !== 'number' ||
-          typeof rectangle.thickness !== 'number'
-        ) {
-          return accumulator
-        }
-
-        const width = Math.max(RECTANGLE_MIN_WIDTH, Math.abs(rectangle.width))
-        const height = Math.max(RECTANGLE_MIN_HEIGHT, Math.abs(rectangle.height))
-        const thickness = Math.max(1, Math.abs(rectangle.thickness))
-        const color =
-          typeof rectangle.color === 'string' ? rectangle.color : RECTANGLE_DEFAULT_COLOR
-        const maxThickness = Math.min(width, height) / 2
-
-        accumulator.push({
-          id: rectangle.id,
-          kind: 'rectangle',
-          x: rectangle.x,
-          y: rectangle.y,
-          width,
-          height,
-          thickness: Math.min(thickness, maxThickness),
-          color,
-        })
-        return accumulator
-      }
-
-      if (shape.kind === 'arrow') {
-        const arrow = shape as Partial<MindMapArrow>
-
-        if (
-          typeof arrow.id !== 'string' ||
-          typeof arrow.x !== 'number' ||
-          typeof arrow.y !== 'number' ||
-          typeof arrow.width !== 'number' ||
-          typeof arrow.height !== 'number' ||
-          typeof arrow.thickness !== 'number'
-        ) {
-          return accumulator
-        }
-
-        const width = Math.max(ARROW_MIN_WIDTH, Math.abs(arrow.width))
-        const rawHeight = Math.max(ARROW_MIN_HEIGHT, Math.abs(arrow.height))
-        const thickness = Math.max(ARROW_MIN_THICKNESS, Math.abs(arrow.thickness))
-        const color = typeof arrow.color === 'string' ? arrow.color : ARROW_DEFAULT_COLOR
-        const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
-        const halfThickness = Math.max(thickness / 2, ARROW_MIN_THICKNESS / 2)
-        const { headHalfHeight } = enforceArrowHeadHeights(rawHeight / 2, halfThickness)
-        const height = headHalfHeight * 2
-        const normalizedThickness = Math.max(ARROW_MIN_THICKNESS, Math.min(thickness, height))
-
-        accumulator.push({
-          id: arrow.id,
-          kind: 'arrow',
-          x: arrow.x,
-          y: arrow.y,
-          width,
-          height,
-          thickness: normalizedThickness,
-          angle,
-          color,
-        })
-        return accumulator
-      }
-
-      if (shape.kind === 'line') {
-        const line = shape as Partial<MindMapLine>
-
-        if (
-          typeof line.id !== 'string' ||
-          typeof line.x !== 'number' ||
-          typeof line.y !== 'number' ||
-          typeof line.length !== 'number' ||
-          typeof line.thickness !== 'number'
-        ) {
-          return accumulator
-        }
-
-        const length = Math.max(LINE_MIN_LENGTH, Math.abs(line.length))
-        const thickness = Math.max(LINE_MIN_THICKNESS, Math.abs(line.thickness))
-        const color = typeof line.color === 'string' ? line.color : LINE_DEFAULT_COLOR
-        const angle = typeof line.angle === 'number' && Number.isFinite(line.angle) ? line.angle : 0
-
-        accumulator.push({
-          id: line.id,
-          kind: 'line',
-          x: line.x,
-          y: line.y,
-          length,
-          thickness,
-          color,
-          angle,
-        })
-        return accumulator
-      }
-
-      return accumulator
-    }, [])
-  }, [])
-
-  const sanitizeImportedCrossLinks = useCallback(
-    (value: unknown, nodeList: MindMapNode[]) => {
-      if (!Array.isArray(value) || nodeList.length === 0) {
-        return []
-      }
-
-      const nodeIds = new Set(nodeList.map((node) => node.id))
-      const seenPairs = new Set<string>()
-      const seenIds = new Set<string>()
-
-      return value.reduce<MindMapCrossLink[]>((accumulator, item) => {
-        if (!item || typeof item !== 'object') {
-          return accumulator
-        }
-
-        const link = item as Partial<MindMapCrossLink>
-
-        if (typeof link.id !== 'string') {
-          return accumulator
-        }
-
-        if (seenIds.has(link.id)) {
-          return accumulator
-        }
-
-        if (typeof link.sourceId !== 'string' || typeof link.targetId !== 'string') {
-          return accumulator
-        }
-
-        if (link.sourceId === link.targetId) {
-          return accumulator
-        }
-
-        if (!nodeIds.has(link.sourceId) || !nodeIds.has(link.targetId)) {
-          return accumulator
-        }
-
-        const [a, b] =
-          link.sourceId < link.targetId
-            ? [link.sourceId, link.targetId]
-            : [link.targetId, link.sourceId]
-        const key = `${a}::${b}`
-
-        if (seenPairs.has(key)) {
-          return accumulator
-        }
-
-        seenPairs.add(key)
-        seenIds.add(link.id)
-        accumulator.push({
-          id: link.id,
-          sourceId: link.sourceId,
-          targetId: link.targetId,
-        })
-        return accumulator
-      }, [])
-    },
-    [],
-  )
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -3326,32 +3030,18 @@ export default function App() {
       const reader = new FileReader()
       reader.onload = () => {
         try {
-          const parsed = JSON.parse(String(reader.result)) as {
-            nodes?: unknown
-            annotations?: unknown
-            shapes?: unknown
-            crossLinks?: unknown
-          }
-          const importedNodes = sanitizeImportedNodes(parsed.nodes)
-          const importedAnnotations = sanitizeImportedAnnotations(parsed.annotations)
-          const importedShapes = sanitizeImportedShapes(parsed.shapes)
-
-          if (!importedNodes) {
+          const parsed = parseImportedMindMapDocument(JSON.parse(String(reader.result)))
+          if (!parsed) {
             window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
             return
           }
 
-          const importedCrossLinks = sanitizeImportedCrossLinks(
-            parsed.crossLinks,
-            importedNodes,
-          )
-
           dispatch({
             type: 'IMPORT',
-            nodes: importedNodes,
-            annotations: importedAnnotations,
-            shapes: importedShapes,
-            crossLinks: importedCrossLinks,
+            nodes: parsed.nodes,
+            annotations: parsed.annotations,
+            shapes: parsed.shapes,
+            crossLinks: parsed.crossLinks,
           })
         } catch (error) {
           console.error('Failed to import mind map', error)
@@ -3361,14 +3051,7 @@ export default function App() {
       reader.readAsText(file)
       event.target.value = ''
     },
-    [
-      dispatch,
-      isLocked,
-      sanitizeImportedAnnotations,
-      sanitizeImportedCrossLinks,
-      sanitizeImportedNodes,
-      sanitizeImportedShapes,
-    ],
+    [dispatch, isLocked],
   )
 
   const handleImportJson = useCallback(() => {
@@ -3509,8 +3192,6 @@ export default function App() {
   const toolbarBodyId = 'mindmap-toolbar-body'
   const shortcutsMenuId = 'mindmap-shortcuts-menu'
   const actionsBodyId = 'mindmap-actions-body'
-  const toolbarClassName = `mindmap-toolbar${isToolbarCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
-  const actionsClassName = `mindmap-actions${areActionsCollapsed ? ' mindmap-actions--collapsed' : ''}`
   const appShellClassName = `app-shell app-shell--${backgroundTheme}${
     isSelectionModeActive ? ' app-shell--select-mode' : ''
   }`
@@ -3582,497 +3263,340 @@ export default function App() {
   const actionsToggleIcon = areActionsCollapsed ? '▴' : '▾'
   const actionsToggleTitle = areActionsCollapsed ? 'Show edit commands' : 'Hide edit commands'
   const actionsToggleLabel = areActionsCollapsed ? 'Expand edit commands' : 'Collapse edit commands'
+  const workspaceStatus = canClear ? 'Map in progress' : 'Fresh canvas'
+  const textSizeOptions = TEXT_SIZE_CHOICES.map((size) => ({
+    value: size,
+    label: TEXT_SIZE_LABELS[size],
+  }))
+  const nodeColorOptions = NODE_COLOR_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+    isSelected: selectedNodeColor === option.value,
+  }))
+  const creationActions: ToolbarActionButton[] = [
+    {
+      key: 'add-child',
+      title: 'Enter to add a child idea',
+      ariaLabel: 'Add child idea',
+      disabled: isLocked,
+      onClick: handleAddChild,
+      icon: (
+        <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--child">
+          +
+        </span>
+      ),
+      hiddenLabel: 'Add child idea',
+    },
+    {
+      key: 'add-idea',
+      title: 'Shift + Enter to add a new detached idea',
+      ariaLabel: 'Add new idea',
+      disabled: isLocked,
+      onClick: handleAddStandaloneNode,
+      icon: (
+        <span
+          aria-hidden="true"
+          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
+        >
+          ×
+        </span>
+      ),
+      hiddenLabel: 'Add new idea',
+    },
+    {
+      key: 'link-parent-child',
+      title: parentChildLinkButtonTitle,
+      ariaLabel:
+        parentChildLinkStatus.mode === 'unlink'
+          ? 'Remove parent-child link'
+          : 'Create parent-child link',
+      disabled: isParentChildButtonDisabled,
+      onClick: handleLinkParentChild,
+      icon: (
+        <span
+          aria-hidden="true"
+          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--hierarchy"
+        >
+          |-
+        </span>
+      ),
+      hiddenLabel:
+        isParentChildButtonDisabled
+          ? parentChildLinkStatus.message
+          : parentChildLinkStatus.mode === 'unlink'
+          ? 'Remove the parent-child link between the selected ideas'
+          : 'Set the first selected idea as the parent of the second',
+    },
+    {
+      key: 'add-cross-link',
+      title: crossLinkButtonTitle,
+      ariaLabel: 'Add cross-link',
+      disabled: isCrossLinkButtonDisabled,
+      onClick: handleAddCrossLink,
+      icon: (
+        <span
+          aria-hidden="true"
+          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--cross-link"
+        >
+          ∿
+        </span>
+      ),
+      hiddenLabel:
+        isCrossLinkButtonDisabled
+          ? 'Select two ideas to add a cross-link'
+          : 'Add a cross-link between the first two selected ideas',
+    },
+    {
+      key: 'add-textbox',
+      title: 'Add a floating text box',
+      ariaLabel: 'Add textbox',
+      disabled: isLocked,
+      onClick: handleAddAnnotation,
+      icon: (
+        <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--text">
+          abc
+        </span>
+      ),
+      hiddenLabel: 'Add textbox',
+    },
+  ]
+  const shapeActions: ToolbarActionButton[] = [
+    {
+      key: 'add-ring',
+      title: 'Add a ring to group related ideas',
+      ariaLabel: 'Add ring',
+      disabled: isLocked,
+      onClick: handleAddRing,
+      icon: (
+        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+          <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
+        </svg>
+      ),
+      hiddenLabel: 'Ring',
+    },
+    {
+      key: 'add-ellipse',
+      title: 'Add an ellipse to spotlight a region',
+      ariaLabel: 'Add ellipse',
+      disabled: isLocked,
+      onClick: handleAddEllipse,
+      icon: (
+        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+          <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
+        </svg>
+      ),
+      hiddenLabel: 'Ellipse',
+    },
+    {
+      key: 'add-rectangle',
+      title: 'Add a rectangle to frame ideas',
+      ariaLabel: 'Add rectangle',
+      disabled: isLocked,
+      onClick: handleAddRectangle,
+      icon: (
+        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+          <rect x="5" y="6" width="14" height="12" rx="2" stroke="#34d399" strokeWidth="3" fill="none" />
+        </svg>
+      ),
+      hiddenLabel: 'Rectangle',
+    },
+    {
+      key: 'add-arrow',
+      title: 'Add an arrow to highlight a flow',
+      ariaLabel: 'Add arrow',
+      disabled: isLocked,
+      onClick: handleAddArrow,
+      icon: (
+        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+          <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
+        </svg>
+      ),
+      hiddenLabel: 'Arrow',
+    },
+    {
+      key: 'add-line',
+      title: 'Add a straight line connector',
+      ariaLabel: 'Add line',
+      disabled: isLocked,
+      onClick: handleAddLine,
+      icon: (
+        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
+          <line x1="5" y1="18" x2="19" y2="6" stroke="#22d3ee" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ),
+      hiddenLabel: 'Line',
+    },
+  ]
+  const actionGroups: MindMapActionGroup[] = [
+    {
+      key: 'modes',
+      label: 'Modes',
+      buttons: [
+        {
+          key: 'toggle-lock',
+          label: lockButtonLabel,
+          title: lockButtonTitle,
+          onClick: toggleLock,
+          ariaPressed: isLocked,
+          icon: lockButtonIcon,
+          hiddenLabel: lockButtonLabel,
+        },
+        {
+          key: 'toggle-background',
+          label: backgroundButtonLabel,
+          title: backgroundButtonTitle,
+          onClick: toggleBackgroundTheme,
+          ariaPressed: isDarkBackground,
+          ariaLabel: backgroundButtonTitle,
+          icon: backgroundButtonIcon,
+          hiddenLabel: backgroundButtonLabel,
+        },
+        {
+          key: 'toggle-grid',
+          label: gridButtonLabel,
+          title: gridButtonTitle,
+          onClick: toggleGridMode,
+          ariaPressed: isGridModeEnabled,
+          ariaLabel: gridButtonTitle,
+          icon: gridButtonIcon,
+          hiddenLabel: gridButtonLabel,
+        },
+      ],
+    },
+    {
+      key: 'edit',
+      label: 'Edit',
+      buttons: [
+        {
+          key: 'delete-selection',
+          label: 'Delete',
+          title: 'Delete or Backspace',
+          onClick: handleDeleteSelection,
+          disabled: isLocked || !canDelete,
+        },
+        {
+          key: 'clear-canvas',
+          label: 'Clear',
+          title: 'Reset the canvas to a fresh root node',
+          onClick: handleClearAll,
+          disabled: isLocked || !canClear,
+        },
+      ],
+    },
+    {
+      key: 'clipboard',
+      label: 'Clipboard',
+      buttons: [
+        {
+          key: 'copy-nodes',
+          label: 'Copy',
+          title: copyButtonTitle,
+          onClick: handleCopyNodes,
+          disabled: !canCopyNodes,
+        },
+        {
+          key: 'paste-nodes',
+          label: 'Paste',
+          title: pasteButtonTitle,
+          onClick: handlePasteNodes,
+          disabled: !canPasteNodes,
+        },
+      ],
+    },
+    {
+      key: 'history',
+      label: 'History',
+      buttons: [
+        {
+          key: 'undo',
+          label: 'Undo',
+          title: 'Ctrl/Cmd + Z',
+          onClick: handleUndo,
+          disabled: isLocked || !canUndo,
+        },
+        {
+          key: 'redo',
+          label: 'Redo',
+          title: 'Ctrl/Cmd + Shift + Z',
+          onClick: handleRedo,
+          disabled: isLocked || !canRedo,
+        },
+      ],
+    },
+  ]
 
   return (
     <div className={appShellClassName}>
       <canvas ref={canvasRef} className="mindmap-canvas" />
       {marqueeStyle ? <div className="mindmap-marquee" style={marqueeStyle} /> : null}
-      <div className={toolbarClassName}>
-        <div className="mindmap-toolbar__header">
-          <button
-            type="button"
-            onClick={toggleToolbarCollapsed}
-            className="mindmap-toolbar__toggle"
-            aria-expanded={!isToolbarCollapsed}
-            aria-controls={toolbarBodyId}
-            aria-label="Toggle toolbar visibility"
-            title={isToolbarCollapsed ? 'Show toolbar controls' : 'Hide toolbar controls'}
-          >
-            {isToolbarCollapsed ? '▾' : '▴'}
-          </button>
-          <div className="mindmap-toolbar__header-actions">
-            <button
-              type="button"
-              onClick={handleAddChild}
-              title="Enter to add a child idea"
-              aria-label="Add child idea"
-              className="mindmap-toolbar__symbol-button"
-              disabled={isLocked}
-            >
-              <span
-                aria-hidden="true"
-                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--child"
-              >
-                +
-              </span>
-              <span className="visually-hidden">Add child idea</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddStandaloneNode}
-              title="Shift + Enter to add a new detached idea"
-              aria-label="Add new idea"
-              className="mindmap-toolbar__symbol-button"
-              disabled={isLocked}
-            >
-              <span
-                aria-hidden="true"
-                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
-              >
-                ×
-              </span>
-              <span className="visually-hidden">Add new idea</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleLinkParentChild}
-              title={parentChildLinkButtonTitle}
-              aria-label={
-                parentChildLinkStatus.mode === 'unlink'
-                  ? 'Remove parent-child link'
-                  : 'Create parent-child link'
-              }
-              className="mindmap-toolbar__symbol-button"
-              disabled={isParentChildButtonDisabled}
-            >
-              <span
-                aria-hidden="true"
-                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--hierarchy"
-            >
-              {'—'}
-            </span>
-              <span className="visually-hidden">
-                {isParentChildButtonDisabled
-                  ? parentChildLinkStatus.message
-                  : parentChildLinkStatus.mode === 'unlink'
-                  ? 'Remove the parent-child link between the selected ideas'
-                  : 'Set the first selected idea as the parent of the second'}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddCrossLink}
-              title={crossLinkButtonTitle}
-              aria-label="Add cross-link"
-              className="mindmap-toolbar__symbol-button"
-              disabled={isCrossLinkButtonDisabled}
-            >
-              <span
-                aria-hidden="true"
-                className="mindmap-toolbar__symbol mindmap-toolbar__symbol--cross-link"
-              >
-                ∿
-              </span>
-              <span className="visually-hidden">
-                {isCrossLinkButtonDisabled
-                  ? 'Select two ideas to add a cross-link'
-                  : 'Add a cross-link between the first two selected ideas'}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddAnnotation}
-              title="Add a floating text box"
-              aria-label="Add textbox"
-              className="mindmap-toolbar__symbol-button"
-              disabled={isLocked}
-            >
-              <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--text">abc</span>
-              <span className="visually-hidden">Add textbox</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddRing}
-              title="Add a ring to group related ideas"
-              aria-label="Add ring"
-              className="mindmap-toolbar__icon-button"
-              disabled={isLocked}
-            >
-              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
-              </svg>
-              <span className="visually-hidden">Ring</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddEllipse}
-              title="Add an ellipse to spotlight a region"
-              aria-label="Add ellipse"
-              className="mindmap-toolbar__icon-button"
-              disabled={isLocked}
-            >
-              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
-              </svg>
-              <span className="visually-hidden">Ellipse</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddRectangle}
-              title="Add a rectangle to frame ideas"
-              aria-label="Add rectangle"
-              className="mindmap-toolbar__icon-button"
-              disabled={isLocked}
-            >
-              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <rect
-                  x="5"
-                  y="6"
-                  width="14"
-                  height="12"
-                  rx="2"
-                  stroke="#34d399"
-                  strokeWidth="3"
-                  fill="none"
-                />
-              </svg>
-              <span className="visually-hidden">Rectangle</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddArrow}
-              title="Add an arrow to highlight a flow"
-              aria-label="Add arrow"
-              className="mindmap-toolbar__icon-button"
-              disabled={isLocked}
-            >
-              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
-              </svg>
-              <span className="visually-hidden">Arrow</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAddLine}
-              title="Add a straight line connector"
-              aria-label="Add line"
-              className="mindmap-toolbar__icon-button"
-              disabled={isLocked}
-            >
-              <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-                <line
-                  x1="5"
-                  y1="18"
-                  x2="19"
-                  y2="6"
-                  stroke="#22d3ee"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="visually-hidden">Line</span>
-            </button>
-          </div>
-        </div>
-        {!isToolbarCollapsed ? (
-          <div className="mindmap-toolbar__body" id={toolbarBodyId}>
-            <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
-              <div className="mindmap-toolbar__text-editor">
-                <label className="mindmap-toolbar__text-control">
-                  <span className="mindmap-toolbar__text-label">{textEditorLabel}</span>
-                  <input
-                    type="text"
-                    value={textDraft}
-                    onChange={handleTextChange}
-                    onKeyDown={handleTextEditorKeyDown}
-                    placeholder={textEditorPlaceholder}
-                    disabled={isTextEditingDisabled}
-                    aria-label={textInputAriaLabel}
-                    className="mindmap-toolbar__text-input"
-                    ref={textInputRef}
-                    title={isLocked ? 'Unlock edits to change text' : undefined}
-                  />
-                </label>
-                <label className="mindmap-toolbar__text-control">
-                  <span className="mindmap-toolbar__text-label">Text size</span>
-                  <select
-                    value={selectedTextSize}
-                    onChange={handleTextSizeChange}
-                    disabled={isTextEditingDisabled}
-                    aria-label={textSizeAriaLabel}
-                    className="mindmap-toolbar__text-select"
-                    title={isLocked ? 'Unlock edits to change text size' : undefined}
-                  >
-                    {TEXT_SIZE_CHOICES.map((size) => (
-                      <option key={size} value={size}>
-                        {TEXT_SIZE_LABELS[size]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {shouldShowNodeColorControls ? (
-                  <div className="mindmap-toolbar__text-control mindmap-toolbar__color-control">
-                    <span className="mindmap-toolbar__text-label">
-                      {hasMixedNodeColors ? 'Node color (mixed)' : 'Node color'}
-                    </span>
-                    <div className="mindmap-toolbar__color-options" role="group" aria-label="Node color">
-                      {NODE_COLOR_OPTIONS.map((option) => {
-                        const isSelectedColor = selectedNodeColor === option.value
-                        const swatchClassName = `mindmap-toolbar__color-swatch${
-                          isSelectedColor ? ' mindmap-toolbar__color-swatch--selected' : ''
-                        }`
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={swatchClassName}
-                            style={{ backgroundColor: option.value }}
-                            onClick={() => handleNodeColorChange(option.value)}
-                            aria-pressed={isSelectedColor}
-                            aria-label={`Apply ${option.label} to ${nodeColorApplyTarget}`}
-                            title={
-                              isNodeColorDisabled
-                                ? 'Unlock edits to change color'
-                                : `Apply ${option.label} to ${nodeColorApplyTarget}`
-                            }
-                            disabled={isNodeColorDisabled}
-                          >
-                            <span className="visually-hidden">
-                              {isSelectedColor
-                                ? `${option.label} selected for ${nodeColorApplyTarget}`
-                                : `Use ${option.label} for ${nodeColorApplyTarget}`}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-      <div className="mindmap-io-panel">
-        <button
-          type="button"
-          onClick={handleImportJson}
-          title="Load from JSON file"
-          className="mindmap-toolbar__io-button"
-          disabled={isLocked}
-        >
-          Import
-        </button>
-        <div className="mindmap-io-panel__export" ref={exportMenuRef}>
-          <button
-            type="button"
-            onClick={toggleExportMenu}
-            className="mindmap-toolbar__io-button"
-            aria-expanded={isExportMenuOpen}
-            aria-haspopup="true"
-            title="Download a copy of your map"
-          >
-            Export
-          </button>
-          {isExportMenuOpen ? (
-            <div className="mindmap-io-panel__export-menu" role="menu">
-              <button type="button" onClick={handleExportJson} role="menuitem">
-                Export JSON
-              </button>
-              <button type="button" onClick={handleExportPng} role="menuitem">
-                Export PNG
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <div className="mindmap-shortcuts" ref={shortcutsMenuRef}>
-          <button
-            type="button"
-            onClick={toggleShortcutsMenu}
-            className="mindmap-toolbar__io-button"
-            aria-expanded={isShortcutsOpen}
-            aria-haspopup="dialog"
-            aria-controls={shortcutsMenuId}
-            title="See all keyboard shortcuts"
-          >
-            Shortcuts
-          </button>
-          {isShortcutsOpen ? (
-            <div
-              className="mindmap-shortcuts__menu"
-              role="dialog"
-              aria-modal="false"
-              aria-label="Keyboard shortcuts"
-              id={shortcutsMenuId}
-            >
-              <p className="mindmap-shortcuts__title">Keyboard shortcuts</p>
-              <ul
-                className="mindmap-shortcuts__list"
-                ref={shortcutsListRef}
-                style={
-                  shortcutsVisibleHeight !== null
-                    ? { maxHeight: shortcutsVisibleHeight }
-                    : undefined
-                }
-              >
-                {KEYBOARD_SHORTCUTS.map((shortcut) => (
-                  <li className="mindmap-shortcuts__item" key={shortcut.keys}>
-                    <span className="mindmap-shortcuts__keys">{shortcut.keys}</span>
-                    <span className="mindmap-shortcuts__description">{shortcut.description}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-      </div>
-      <div className={actionsClassName} role="group" aria-label="Edit commands">
-        <div className="mindmap-actions__header">
-          <button
-            type="button"
-            onClick={toggleActionsCollapsed}
-            className="mindmap-actions__collapse-button"
-            aria-expanded={!areActionsCollapsed}
-            aria-controls={actionsBodyId}
-            title={actionsToggleTitle}
-          >
-            <span aria-hidden="true">{actionsToggleIcon}</span>
-            <span className="visually-hidden">{actionsToggleLabel}</span>
-          </button>
-        </div>
-        <div id={actionsBodyId} className="mindmap-actions__body" hidden={areActionsCollapsed}>
-          <div className="mindmap-actions__row">
-            <button
-              type="button"
-              onClick={toggleLock}
-              aria-pressed={isLocked}
-              title={lockButtonTitle}
-            >
-              <span aria-hidden="true" className="mindmap-actions__icon">{lockButtonIcon}</span>
-              <span className="visually-hidden">{lockButtonLabel}</span>
-            </button>
-            <button
-              type="button"
-              onClick={toggleBackgroundTheme}
-              aria-pressed={isDarkBackground}
-              aria-label={backgroundButtonTitle}
-              title={backgroundButtonTitle}
-            >
-              <span aria-hidden="true" className="mindmap-actions__icon">{backgroundButtonIcon}</span>
-              <span className="visually-hidden">{backgroundButtonLabel}</span>
-            </button>
-            <button
-              type="button"
-              onClick={toggleGridMode}
-              aria-pressed={isGridModeEnabled}
-              aria-label={gridButtonTitle}
-              title={gridButtonTitle}
-            >
-              <span aria-hidden="true" className="mindmap-actions__icon">{gridButtonIcon}</span>
-              <span className="visually-hidden">{gridButtonLabel}</span>
-            </button>
-          </div>
-          <div className="mindmap-actions__row">
-            <button
-              type="button"
-              onClick={handleDeleteSelection}
-              disabled={isLocked || !canDelete}
-              title="Delete or Backspace"
-            >
-              Delete
-            </button>
-            <button
-              type="button"
-              onClick={handleClearAll}
-              disabled={isLocked || !canClear}
-              title="Reset the canvas to a fresh root node"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="mindmap-actions__row">
-            <button
-              type="button"
-              onClick={handleCopyNodes}
-              disabled={!canCopyNodes}
-              title={copyButtonTitle}
-            >
-              Copy
-            </button>
-            <button
-              type="button"
-              onClick={handlePasteNodes}
-              disabled={!canPasteNodes}
-              title={pasteButtonTitle}
-            >
-              Paste
-            </button>
-          </div>
-          <div className="mindmap-actions__row">
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={isLocked || !canUndo}
-              title="Ctrl/Cmd + Z"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={handleRedo}
-              disabled={isLocked || !canRedo}
-              title="Ctrl/Cmd + Shift + Z"
-            >
-              Redo
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="mindmap-navigation" role="group" aria-label="Viewport navigation controls">
-        <div className="mindmap-navigation__dpad">
-          <div className="mindmap-navigation__spacer" aria-hidden="true" />
-          <button type="button" onClick={handlePanUp} aria-label="Pan up" title="Pan up (Arrow Up)">
-            ↑
-          </button>
-          <div className="mindmap-navigation__spacer" aria-hidden="true" />
-          <button type="button" onClick={handlePanLeft} aria-label="Pan left" title="Pan left (Arrow Left)">
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={handleResetView}
-            aria-label="Center view"
-            title="Center view (C)"
-            className="mindmap-navigation__center"
-          >
-            ⦿
-          </button>
-          <button type="button" onClick={handlePanRight} aria-label="Pan right" title="Pan right (Arrow Right)">
-            →
-          </button>
-          <div className="mindmap-navigation__spacer" aria-hidden="true" />
-          <button type="button" onClick={handlePanDown} aria-label="Pan down" title="Pan down (Arrow Down)">
-            ↓
-          </button>
-          <div className="mindmap-navigation__spacer" aria-hidden="true" />
-        </div>
-        <div className="mindmap-navigation__zoom" aria-live="polite">
-          <button type="button" onClick={handleZoomOut} disabled={!canZoomOut} title="Zoom out (-)">
-            −
-          </button>
-          <span>{zoomPercentage}%</span>
-          <button type="button" onClick={handleZoomIn} disabled={!canZoomIn} title="Zoom in (+)">
-            +
-          </button>
-        </div>
-      </div>
+      <MindMapToolbar
+        isCollapsed={isToolbarCollapsed}
+        toolbarBodyId={toolbarBodyId}
+        onToggleCollapse={toggleToolbarCollapsed}
+        creationActions={creationActions}
+        shapeActions={shapeActions}
+        textEditorLabel={textEditorLabel}
+        textDraft={textDraft}
+        onTextChange={handleTextChange}
+        onTextKeyDown={handleTextEditorKeyDown}
+        textInputPlaceholder={textEditorPlaceholder}
+        isTextEditingDisabled={isTextEditingDisabled}
+        textInputAriaLabel={textInputAriaLabel}
+        textInputTitle={isLocked ? 'Unlock edits to change text' : undefined}
+        textInputRef={textInputRef}
+        selectedTextSize={selectedTextSize}
+        onTextSizeChange={handleTextSizeChange}
+        textSizeAriaLabel={textSizeAriaLabel}
+        textSizeTitle={isLocked ? 'Unlock edits to change text size' : undefined}
+        textSizeOptions={textSizeOptions}
+        showNodeColorControls={shouldShowNodeColorControls}
+        hasMixedNodeColors={hasMixedNodeColors}
+        nodeColorApplyTarget={nodeColorApplyTarget}
+        isNodeColorDisabled={isNodeColorDisabled}
+        nodeColorOptions={nodeColorOptions}
+        onNodeColorChange={handleNodeColorChange}
+      />
+      <MindMapWorkspacePanel
+        workspaceStatus={workspaceStatus}
+        isLocked={isLocked}
+        onImportJson={handleImportJson}
+        isExportMenuOpen={isExportMenuOpen}
+        onToggleExportMenu={toggleExportMenu}
+        onExportJson={handleExportJson}
+        onExportPng={handleExportPng}
+        exportMenuRef={exportMenuRef}
+        isShortcutsOpen={isShortcutsOpen}
+        onToggleShortcutsMenu={toggleShortcutsMenu}
+        shortcutsMenuId={shortcutsMenuId}
+        shortcuts={KEYBOARD_SHORTCUTS}
+        shortcutsVisibleHeight={shortcutsVisibleHeight}
+        shortcutsMenuRef={shortcutsMenuRef}
+        shortcutsListRef={shortcutsListRef}
+        fileInputRef={fileInputRef}
+        onFileChange={handleFileChange}
+      />
+      <MindMapActionsPanel
+        isCollapsed={areActionsCollapsed}
+        actionsBodyId={actionsBodyId}
+        title={isLocked ? 'Review tools' : 'Edit tools'}
+        onToggleCollapse={toggleActionsCollapsed}
+        toggleTitle={actionsToggleTitle}
+        toggleLabel={actionsToggleLabel}
+        toggleIcon={actionsToggleIcon}
+        groups={actionGroups}
+      />
+      <MindMapNavigation
+        zoomPercentage={zoomPercentage}
+        canZoomOut={canZoomOut}
+        canZoomIn={canZoomIn}
+        onPanUp={handlePanUp}
+        onPanLeft={handlePanLeft}
+        onResetView={handleResetView}
+        onPanRight={handlePanRight}
+        onPanDown={handlePanDown}
+        onZoomOut={handleZoomOut}
+        onZoomIn={handleZoomIn}
+      />
     </div>
   )
 }

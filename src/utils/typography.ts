@@ -13,7 +13,7 @@ import {
   ANNOTATION_PADDING_Y,
   ANNOTATION_MIN_WIDTH,
 } from '../constants/mindMap'
-import { type TextSize } from '../state/MindMapContext'
+import { type TextSize } from '../state/mindMapModel'
 
 export const getNodeFont = (size: TextSize) => `${NODE_FONT_SIZES[size]}px ${NODE_FONT_FAMILY}`
 export const getNodeLineHeight = (size: TextSize) => NODE_LINE_HEIGHTS[size]

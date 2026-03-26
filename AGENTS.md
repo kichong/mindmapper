@@ -1,51 +1,31 @@
 # Mindmapper Agent Guide
 
-## Start here
-- Skim `README.md` for the product tour, feature list, and data model overview. It now documents the locked JSON contract so future work stays backward compatible.
-- Read `llms.txt` before editing or generating map JSON. It consolidates the importer expectations for nodes, annotations, shapes, and cross-links, shows spacing/orbit guidance, and embeds two reference JSON examples.
-- Share open questions early. If a requirement is unclear, restate it in your own words and list the follow-up questions so humans can respond quickly.
+## Start
+- Read `MAP.md` first for routing.
+- Read `README.md` for product scope and current layout.
+- Read `llms.txt` before touching JSON import/export behavior.
 
-## Required checks (run before every commit)
-1. `npm run lint`
-2. `npm run build`
+## High-Signal Files
+- `src/App.tsx`: canvas runtime, input handling, selection, and feature orchestration.
+- `src/components/`: toolbar, workspace panel, actions panel, and viewport controls.
+- `src/state/MindMapContext.tsx`: types, reducer, history rules, and local persistence.
+- `src/utils/mindMapDocument.ts`: backward-compatible JSON sanitization and serialization.
+- `src/constants/mindMap.ts`: shared sizing, colors, shortcuts, and canvas constants.
 
-These commands validate syntax, formatting, types, and bundling. Rerun them after each change until they pass.
+## Guardrails
+- Preserve the four-array JSON contract: `nodes`, `annotations`, `shapes`, `crossLinks`.
+- Route all import/export changes through `src/utils/mindMapDocument.ts`.
+- Keep `normalizeTextSize` in the loop for created, imported, or updated text records.
+- Reuse shared constants and utility modules instead of redefining geometry, typography, or view math in components.
+- Keep desktop panel changes inside `src/components/` and styling in `src/App.css` / `src/index.css`.
+- Ignore `dist/`, `node_modules/`, and `.codex/` when orienting or documenting the repo.
 
-## Local workflow
-1. Install dependencies with `npm install`.
-2. Start the dev server (`npm run dev`) to confirm UX flows such as node editing, shape handles, import/export, and zoom controls.
-3. Keep explanations, inline comments, and commit messages in plain English so non-developers can follow the changes.
-4. Describe what someone should see when they test locally (for example, "Running `npm run dev` shows the updated toolbar labels").
+## Efficient Workflow
+1. Start from `MAP.md`, then open only the files for the task area.
+2. For behavior changes, inspect `src/App.tsx` plus the relevant shared utility or state file.
+3. For UI chrome changes, inspect the extracted component in `src/components/` before editing `src/App.tsx`.
+4. After changes, run `npm run lint` and `npm run build`.
 
-## Collaboration tips
-- Document new conventions (UI tweaks, data shapes, helper utilities) directly in the scoped `AGENTS.MD` file so future agents inherit the context.
-- Dark mode surfaces now anchor to a near-black base (`#020409`) with overlays derived from `rgba(4, 7, 12, alpha)`. Keep new backgrounds aligned with this palette so the theme stays consistent.
-- The actions panel hosts a gridline toggle. When enabled, the canvas renders alignment guides and snaps rectangles, lines, and arrows to the 80px lattice defined by `GRIDLINE_SPACING`. Use the `GRIDLINE_*` constants when adjusting colors or spacing.
-- Prefer enhancing existing patterns instead of adding parallel solutions. Reuse helpers like `normalizeTextSize`, the shared toolbar text editor, and the `selectedTextTarget` pattern.
-- Use `renderMindMapSceneToCanvas` (src/utils/exportScene.ts) when adding new export surfaces so PNG/PDF captures stay aligned with the full-scene bounds and background gradients.
-- Shared constants now live in `src/constants/mindMap.ts`. Canvas math helpers sit in `src/utils/geometry.ts`, text layout utilities in `src/utils/typography.ts`, and view fitting in `src/utils/view.ts`. Update these modules instead of redefining values in components.
-- When expanding shape tools, match the golden resize handle interaction already used by rings and ellipses.
-- Keep node and text box edits wired through the shared toolbar so double-click-to-edit continues to work.
-
-## Features to keep in mind
-- Shape tools now include rings, ellipses, rectangles, arrows, and lines that rely on a single golden resize handle.
-- Undo/Redo only records structural and text edits. Moving or resizing nodes, annotations, or shapes updates the live state but does not add history entries.
-- Cross-links connect any two nodes. They live in `state.crossLinks`, export with the map JSON, and render as curved connectors that arc around nearby nodes.
-- Select any two nodes and use the parent-child link button in the toolbar to reparent the second selection under the first without creating a new node. The ordered selection still matters: the first id is treated as the parent candidate.
-- Nodes and floating text boxes store a `textSize` of `small`, `medium`, or `large`. Always pass values through `normalizeTextSize` when creating or importing records.
-- Nodes expose color swatches in the toolbar. Use `DEFAULT_NODE_COLOR`, `NODE_COLOR_OPTIONS`, and dispatch `UPDATE_NODES` so single and multi-select color changes land in one history entry.
-- Keyboard shortcuts now include Space (or C) to recentre the view and Shift+Enter to add a detached idea. Keep the shortcut list in `KEYBOARD_SHORTCUTS` (App.tsx) in sync when you add or remove shortcuts so the in-app cheat sheet stays accurate.
-- Selection now tracks an ordered array. Shift or Meta/Ctrl-click toggles membership, batch reducers like `MOVE_NODES`, `DELETE_NODES`, and `UPDATE_NODES` keep history tidy, and the first id in the array is the "primary" node when a single target is required.
-- Holding Shift lets you drag a marquee to select every node whose center falls inside the box; keep other modifiers pressed to add the result to the current selection and release Shift to return to normal dragging.
-- Copy/Paste is wired through `handleCopyNodes` / `handlePasteNodes` in `App.tsx`. The `ADD_NODES` reducer clones every selected node into new top-level entries, offsets them slightly, and keeps the whole paste in a single undo step. Buttons live in the bottom-left command panel alongside Ctrl/Cmd+C and Ctrl/Cmd+V shortcuts.
-- Circular node labels now wrap into multiple centered lines. Reuse `measureNodeLabel`/`calculateNodeLabelLayout` to keep padding and radius calculations in sync with the wrapped text.
-- The top toolbar collapses and now starts in the collapsed state so new sessions stay unobtrusive. Leave creation buttons visible when collapsed and tuck detailed controls into the expanded panel.
-- The bottom-left actions panel (delete, copy, undo, etc.) also loads collapsed by default; rely on the existing toggle instead of forcing it open.
-- The toolbar hosts one text editor that updates whichever node, annotation, or shape label is selected. Follow the `selectedTextTarget` logic when adding text-based controls.
-- Double-clicking any node or floating text box should pop the toolbar open and move focus to the shared text editor so users can type immediately.
-- Creating a node (from the toolbar or as a child) should auto-select it, open the toolbar if needed, and focus the shared text editor so typing starts right away.
-
-## Shipping checklist
-- Update documentation (including `README.md` or scoped guides) whenever you add capabilities or conventions that other agents must know.
-- Summarize changes, test results, and any remaining questions in your final message to the user.
-- Leave the repository clean (`git status` should report no pending changes) before wrapping up.
+## Maintenance
+- Update `MAP.md` if routing changes.
+- Update this file when guardrails or high-signal entry points change.

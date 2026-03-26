@@ -1,4 +1,4 @@
-import { DEFAULT_NODE_COLOR } from '../state/MindMapContext'
+import { DEFAULT_NODE_COLOR } from '../state/mindMapModel'
 
 export const NODE_BASE_RADIUS = 40
 export const NODE_TEXT_PADDING = 18

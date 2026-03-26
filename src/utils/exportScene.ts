@@ -20,7 +20,7 @@ import {
   type MindMapShape,
   normalizeTextSize,
   DEFAULT_NODE_COLOR,
-} from '../state/MindMapContext'
+} from '../state/mindMapModel'
 import {
   calculateNodeLabelLayout,
   getAnnotationFont,

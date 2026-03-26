@@ -11,7 +11,7 @@ import {
   LINE_MIN_LENGTH,
   LINE_MIN_THICKNESS,
 } from '../constants/mindMap'
-import { type MindMapArrow, type MindMapLine } from '../state/MindMapContext'
+import { type MindMapArrow, type MindMapLine } from '../state/mindMapModel'
 
 export type Point = { x: number; y: number }
 

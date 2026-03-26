@@ -1,5 +1,5 @@
 import { AUTO_CENTER_PADDING, MAX_ZOOM, MIN_ZOOM } from '../constants/mindMap'
-import { type MindMapNode } from '../state/MindMapContext'
+import { type MindMapNode } from '../state/mindMapModel'
 import { clamp } from './geometry'
 
 export type CanvasSize = { width: number; height: number }

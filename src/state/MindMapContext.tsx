@@ -7,105 +7,43 @@ import {
   useReducer,
   type Dispatch,
 } from 'react'
+import {
+  sanitizeImportedAnnotations,
+  sanitizeImportedCrossLinks,
+  sanitizeImportedNodes,
+  sanitizeImportedShapes,
+} from '../utils/mindMapDocument'
+import {
+  DEFAULT_NODE_COLOR,
+  normalizeTextSize,
+  type MindMapAnnotation,
+  type MindMapArrow,
+  type MindMapCrossLink,
+  type MindMapEllipse,
+  type MindMapLine,
+  type MindMapNode,
+  type MindMapRectangle,
+  type MindMapRing,
+  type MindMapShape,
+} from './mindMapModel'
 
-export type TextSize = 'small' | 'medium' | 'large'
-
-export const TEXT_SIZE_CHOICES: readonly TextSize[] = ['small', 'medium', 'large']
-
-export function normalizeTextSize(value: unknown): TextSize {
-  return value === 'small' || value === 'medium' || value === 'large'
-    ? (value as TextSize)
-    : 'medium'
-}
-
-
-export const DEFAULT_NODE_COLOR = '#4f46e5'
-
-export interface MindMapNode {
-  id: string
-  parentId: string | null
-  text: string
-  x: number
-  y: number
-  color: string
-  textSize: TextSize
-}
-
-export interface MindMapAnnotation {
-  id: string
-  text: string
-  x: number
-  y: number
-  textSize: TextSize
-}
-
-export interface MindMapRing {
-  id: string
-  kind: 'ring'
-  x: number
-  y: number
-  radius: number
-  thickness: number
-  color: string
-}
-
-export interface MindMapEllipse {
-  id: string
-  kind: 'ellipse'
-  x: number
-  y: number
-  radiusX: number
-  radiusY: number
-  thickness: number
-  color: string
-}
-
-export interface MindMapRectangle {
-  id: string
-  kind: 'rectangle'
-  x: number
-  y: number
-  width: number
-  height: number
-  thickness: number
-  color: string
-}
-
-export interface MindMapArrow {
-  id: string
-  kind: 'arrow'
-  x: number
-  y: number
-  width: number
-  height: number
-  thickness: number
-  angle: number
-  color: string
-}
-
-export interface MindMapLine {
-  id: string
-  kind: 'line'
-  x: number
-  y: number
-  length: number
-  thickness: number
-  angle: number
-  color: string
-}
-
-export interface MindMapCrossLink {
-  id: string
-  sourceId: string
-  targetId: string
-}
-
-export type MindMapShape =
-  | MindMapRing
-  | MindMapEllipse
-  | MindMapRectangle
-  | MindMapArrow
-  | MindMapLine
+export {
+  DEFAULT_NODE_COLOR,
+  TEXT_SIZE_CHOICES,
+  normalizeTextSize,
+} from './mindMapModel'
+export type {
+  MindMapAnnotation,
+  MindMapArrow,
+  MindMapCrossLink,
+  MindMapEllipse,
+  MindMapLine,
+  MindMapNode,
+  MindMapRectangle,
+  MindMapRing,
+  MindMapShape,
+  TextSize,
+} from './mindMapModel'
 
 type MindMapShapeUpdate =
   | Partial<Omit<MindMapRing, 'id' | 'kind'>>
@@ -187,7 +125,6 @@ type MindMapAction =
       shapes?: MindMapShape[]
       crossLinks?: MindMapCrossLink[]
     }
-  | { type: 'EXPORT' }
   | { type: 'SELECT_ANNOTATION'; annotationId: string | null }
   | { type: 'SELECT_SHAPE'; shapeId: string | null }
 
@@ -226,233 +163,6 @@ const initialState: MindMapState = {
 
 const STORAGE_KEY = 'mindmapper:snapshot'
 
-function isMindMapNode(value: unknown): value is MindMapNode {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const node = value as Partial<MindMapNode>
-  if (typeof node.id !== 'string') {
-    return false
-  }
-
-  if (!(typeof node.parentId === 'string' || node.parentId === null)) {
-    return false
-  }
-
-  if (typeof node.text !== 'string') {
-    return false
-  }
-
-  if (typeof node.x !== 'number' || typeof node.y !== 'number') {
-    return false
-  }
-
-  if (typeof node.color !== 'string') {
-    return false
-  }
-
-  const normalizedSize = normalizeTextSize((node as { textSize?: unknown }).textSize)
-  const typedNode = node as { textSize: TextSize }
-  typedNode.textSize = normalizedSize
-
-  return true
-}
-
-function isMindMapAnnotation(value: unknown): value is MindMapAnnotation {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const annotation = value as Partial<MindMapAnnotation>
-  if (typeof annotation.id !== 'string') {
-    return false
-  }
-
-  if (typeof annotation.text !== 'string') {
-    return false
-  }
-
-  if (typeof annotation.x !== 'number' || typeof annotation.y !== 'number') {
-    return false
-  }
-
-  const normalizedSize = normalizeTextSize((annotation as { textSize?: unknown }).textSize)
-  const typedAnnotation = annotation as { textSize: TextSize }
-  typedAnnotation.textSize = normalizedSize
-
-  return true
-}
-
-function isMindMapShape(value: unknown): value is MindMapShape {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const shape = value as Partial<MindMapShape> & { kind?: string }
-  if (typeof shape.id !== 'string') {
-    return false
-  }
-
-  if (shape.kind === 'ring') {
-    const ring = shape as Partial<MindMapRing>
-
-    if (typeof ring.x !== 'number' || typeof ring.y !== 'number') {
-      return false
-    }
-
-    if (typeof ring.radius !== 'number' || typeof ring.thickness !== 'number') {
-      return false
-    }
-
-    if (typeof ring.color !== 'string') {
-      return false
-    }
-
-    return Number.isFinite(ring.radius) && Number.isFinite(ring.thickness) && ring.thickness > 0
-  }
-
-  if (shape.kind === 'ellipse') {
-    const ellipse = shape as Partial<MindMapEllipse>
-
-    if (typeof ellipse.x !== 'number' || typeof ellipse.y !== 'number') {
-      return false
-    }
-
-    if (typeof ellipse.radiusX !== 'number' || typeof ellipse.radiusY !== 'number') {
-      return false
-    }
-
-    if (typeof ellipse.thickness !== 'number') {
-      return false
-    }
-
-    if (typeof ellipse.color !== 'string') {
-      return false
-    }
-
-    return (
-      Number.isFinite(ellipse.radiusX) &&
-      Number.isFinite(ellipse.radiusY) &&
-      ellipse.radiusX > 0 &&
-      ellipse.radiusY > 0 &&
-      Number.isFinite(ellipse.thickness) &&
-      ellipse.thickness > 0
-    )
-  }
-
-  if (shape.kind === 'rectangle') {
-    const rectangle = shape as Partial<MindMapRectangle>
-
-    if (typeof rectangle.x !== 'number' || typeof rectangle.y !== 'number') {
-      return false
-    }
-
-    if (typeof rectangle.width !== 'number' || typeof rectangle.height !== 'number') {
-      return false
-    }
-
-    if (typeof rectangle.thickness !== 'number') {
-      return false
-    }
-
-    if (typeof rectangle.color !== 'string') {
-      return false
-    }
-
-    return (
-      Number.isFinite(rectangle.width) &&
-      Number.isFinite(rectangle.height) &&
-      rectangle.width > 0 &&
-      rectangle.height > 0 &&
-      Number.isFinite(rectangle.thickness) &&
-      rectangle.thickness > 0
-    )
-  }
-
-  if (shape.kind === 'arrow') {
-    const arrow = shape as Partial<MindMapArrow>
-
-    if (typeof arrow.x !== 'number' || typeof arrow.y !== 'number') {
-      return false
-    }
-
-    if (typeof arrow.width !== 'number' || typeof arrow.height !== 'number') {
-      return false
-    }
-
-    if (typeof arrow.thickness !== 'number') {
-      return false
-    }
-
-    if (typeof arrow.color !== 'string') {
-      return false
-    }
-
-    const angle = typeof arrow.angle === 'number' && Number.isFinite(arrow.angle) ? arrow.angle : 0
-    ;(arrow as { angle: number }).angle = angle
-
-    return (
-      Number.isFinite(arrow.width) &&
-      Number.isFinite(arrow.height) &&
-      arrow.width > 0 &&
-      arrow.height > 0 &&
-      Number.isFinite(arrow.thickness) &&
-      arrow.thickness > 0
-    )
-  }
-
-  if (shape.kind === 'line') {
-    const line = shape as Partial<MindMapLine>
-
-    if (typeof line.x !== 'number' || typeof line.y !== 'number') {
-      return false
-    }
-
-    if (typeof line.length !== 'number' || typeof line.thickness !== 'number') {
-      return false
-    }
-
-    if (typeof line.color !== 'string') {
-      return false
-    }
-
-    const angle = typeof line.angle === 'number' && Number.isFinite(line.angle) ? line.angle : 0
-    ;(line as { angle: number }).angle = angle
-
-    return (
-      Number.isFinite(line.length) &&
-      line.length > 0 &&
-      Number.isFinite(line.thickness) &&
-      line.thickness > 0
-    )
-  }
-
-  return false
-}
-
-function isMindMapCrossLink(value: unknown): value is MindMapCrossLink {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const link = value as Partial<MindMapCrossLink>
-
-  if (typeof link.id !== 'string') {
-    return false
-  }
-
-  if (typeof link.sourceId !== 'string' || typeof link.targetId !== 'string') {
-    return false
-  }
-
-  if (link.sourceId === link.targetId) {
-    return false
-  }
-
-  return true
-}
-
 function loadPersistedState(): MindMapState {
   if (typeof window === 'undefined') {
     return initialState
@@ -475,29 +185,15 @@ function loadPersistedState(): MindMapState {
       selectedShapeId?: unknown
     }
 
-    if (!Array.isArray(parsed.nodes)) {
+    const nodes = sanitizeImportedNodes(parsed.nodes)
+    if (!nodes || nodes.length === 0) {
       return initialState
     }
 
-    const nodes = parsed.nodes.filter(isMindMapNode)
-    if (nodes.length === 0) {
-      return initialState
-    }
-
-    const annotations = Array.isArray(parsed.annotations)
-      ? parsed.annotations.filter(isMindMapAnnotation)
-      : []
-
-    const shapes = Array.isArray(parsed.shapes) ? parsed.shapes.filter(isMindMapShape) : []
-
+    const annotations = sanitizeImportedAnnotations(parsed.annotations)
+    const shapes = sanitizeImportedShapes(parsed.shapes)
     const existingNodeIds = new Set(nodes.map((node) => node.id))
-    const crossLinks = Array.isArray(parsed.crossLinks)
-      ? parsed.crossLinks
-          .filter(isMindMapCrossLink)
-          .filter(
-            (link) => existingNodeIds.has(link.sourceId) && existingNodeIds.has(link.targetId),
-          )
-      : []
+    const crossLinks = sanitizeImportedCrossLinks(parsed.crossLinks, nodes)
     const parsedNodeIds = Array.isArray(parsed.selectedNodeIds)
       ? parsed.selectedNodeIds.filter((value): value is string => typeof value === 'string')
       : []
@@ -1348,9 +1044,6 @@ function mindMapReducer(state: MindMapState, action: MindMapAction): MindMapStat
           future: [],
         },
       }
-    }
-    case 'EXPORT': {
-      return state
     }
     case 'SET_SELECTED_NODES': {
       const selectedNodeIds = normalizeSelectedNodeIds(action.nodeIds, state.nodes)
