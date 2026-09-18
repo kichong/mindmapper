@@ -291,6 +291,18 @@ function getShapeThicknessRange(shape: MindMapShape | null) {
   return { min: 1, max: 24 }
 }
 
+function getNextNodeColor(referenceColor?: string) {
+  if (FALLBACK_COLORS.length === 0) {
+    return DEFAULT_NODE_COLOR
+  }
+
+  const currentIndex = referenceColor
+    ? FALLBACK_COLORS.findIndex((color) => color.toLowerCase() === referenceColor.toLowerCase())
+    : -1
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % FALLBACK_COLORS.length : 0
+  return FALLBACK_COLORS[nextIndex] ?? DEFAULT_NODE_COLOR
+}
+
 function snapValue(value: number, spacing: number): number {
   if (spacing <= 0) {
     return value
@@ -2366,8 +2378,7 @@ export default function App() {
     const distance = LINK_DISTANCE + siblings.length * 10
     const nextX = parent.x + Math.cos(angle) * distance
     const nextY = parent.y + Math.sin(angle) * distance
-    const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
+    const nodeColor = getNextNodeColor(parent.color)
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -2495,8 +2506,8 @@ export default function App() {
 
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
-    const paletteIndex = nodes.length % FALLBACK_COLORS.length
-    const nodeColor = FALLBACK_COLORS[paletteIndex] ?? DEFAULT_NODE_COLOR
+    const colorReference = primarySelectedNode?.color ?? nodes[nodes.length - 1]?.color
+    const nodeColor = getNextNodeColor(colorReference)
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -2520,7 +2531,7 @@ export default function App() {
     dispatch({ type: 'SET_SELECTED_NODES', nodeIds: [newNodeId] })
     setTextDraft(defaultText)
     requestTextEditorFocus()
-  }, [dispatch, isLocked, nodes, requestTextEditorFocus])
+  }, [dispatch, isLocked, nodes, primarySelectedNode, requestTextEditorFocus])
 
   const handleAddAnnotation = useCallback(() => {
     if (isLocked) {

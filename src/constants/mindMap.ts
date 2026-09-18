@@ -26,17 +26,12 @@ export const MINDMAP_COLOR_OPTIONS: readonly MindMapColorOption[] = [
   { value: '#d97578', label: 'Coral', isDefault: true },
   { value: '#5faf91', label: 'Sage', isDefault: true },
   { value: '#b65f84', label: 'Rose', isDefault: false },
-  { value: '#536875', label: 'Steel', isDefault: false },
   { value: '#9aa8ad', label: 'Mist', isDefault: false },
   { value: '#d5dee3', label: 'Cloud', isDefault: false },
-  { value: '#4778c8', label: 'Cobalt', isDefault: false },
-  { value: '#c66f45', label: 'Ember', isDefault: false },
   { value: '#243139', label: 'Ink', isDefault: false },
 ] as const
 export const NODE_COLOR_OPTIONS = MINDMAP_COLOR_OPTIONS
-export const FALLBACK_COLORS = NODE_COLOR_OPTIONS.filter((option) => option.isDefault).map(
-  (option) => option.value,
-)
+export const FALLBACK_COLORS = NODE_COLOR_OPTIONS.map((option) => option.value)
 
 export const MIN_ZOOM = 0.25
 export const MAX_ZOOM = 2.5
