@@ -123,7 +123,7 @@ export type KeyboardShortcut = { keys: string; description: string }
 export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { keys: 'Enter', description: 'Add a child idea to the selected node' },
   { keys: 'Shift + Enter', description: 'Add a detached idea at the center of the view' },
-  { keys: 'Shift/Ctrl/Cmd + Click', description: 'Add or remove a node from the selection' },
+  { keys: 'Shift/Ctrl/Cmd + Click', description: 'Add or remove a node or shape from the selection' },
   { keys: 'Shift + Drag', description: 'Draw a selection box to highlight multiple ideas' },
   { keys: 'Arrow keys', description: 'Pan the canvas up, down, left, or right' },
   { keys: 'Space or C', description: 'Recenter the view to focus on your map' },

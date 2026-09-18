@@ -145,7 +145,8 @@ LLM Workflow Checklist
 7) Optional: include metadata/exportedAt for provenance.
 
 Import/Export Behavior Notes (app expectations)
-- Extra top-level keys are ignored; the four arrays must exist (can be empty).
+- Extra top-level keys are ignored. New exports use all four arrays, which may be empty; shape-only maps are valid.
+- For backward compatibility, the app also accepts older node-only files and supplies empty annotations, shapes, and crossLinks arrays.
 - Duplicate ids will cause conflicts; ensure all ids are unique strings.
 - The app normalizes invalid textSize to "medium".
 

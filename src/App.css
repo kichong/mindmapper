@@ -181,3 +181,62 @@
 .mindmap-toolbar__range::-webkit-slider-runnable-track { height: 2px; border-radius: 999px; background: color-mix(in srgb,var(--accent) 42%,var(--panel-border)); }
 .mindmap-toolbar__range::-webkit-slider-thumb { width: .85rem; height: .85rem; margin-top: -.37rem; appearance: none; border: 2px solid var(--surface-strong); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent); }
 .mindmap-toolbar__thickness-control output { float: right; color: var(--text-secondary); }
+
+/* One bounded column owns the rail and canvas tools, including short viewports. */
+.mindmap-left-dock {
+  position: absolute;
+  z-index: 5;
+  top: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: .75rem;
+  pointer-events: none;
+}
+.mindmap-left-dock .mindmap-toolbar {
+  position: relative;
+  top: auto;
+  left: auto;
+  align-self: start;
+  min-height: 0;
+  max-height: 100%;
+  pointer-events: auto;
+}
+.mindmap-toolbar__header {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  min-height: 0;
+}
+.mindmap-toolbar__body { max-height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.mindmap-left-dock .mindmap-actions {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  max-width: calc(100vw - 11rem);
+  max-height: 42dvh;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+@media (max-width: 860px) {
+  .mindmap-left-dock { bottom: 4.9rem; }
+}
+
+@media (max-width: 860px) {
+  .mindmap-io-panel__export, .mindmap-shortcuts { position: static; }
+  .mindmap-io-panel__export-menu, .mindmap-shortcuts__menu {
+    top: auto;
+    bottom: calc(100% + .55rem);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100dvh - 6rem);
+    overflow-y: auto;
+  }
+  .mindmap-shortcuts__menu { min-width: min(20rem, calc(100vw - 2rem)); }
+}
+
+/* Workspace popovers must sit above the viewport navigation. */
+.mindmap-io-panel { z-index: 6; }

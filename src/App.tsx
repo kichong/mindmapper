@@ -1,3 +1,5 @@
+import { MindMapControlDock } from './components/MindMapControlDock'
+import { createShape } from './utils/createShape'
 import {
   useCallback,
   useEffect,
@@ -35,11 +37,7 @@ import {
   useMindMap,
 } from './state/MindMapContext'
 import {
-  ARROW_DEFAULT_ANGLE,
   ARROW_DEFAULT_COLOR,
-  ARROW_DEFAULT_HEIGHT,
-  ARROW_DEFAULT_THICKNESS,
-  ARROW_DEFAULT_WIDTH,
   ARROW_HIT_PADDING,
   ARROW_MIN_HEIGHT,
   ARROW_MIN_THICKNESS,
@@ -50,19 +48,13 @@ import {
   CROSS_LINK_MIN_CURVE_OFFSET,
   CROSS_LINK_STROKE_WIDTH,
   ELLIPSE_DEFAULT_COLOR,
-  ELLIPSE_DEFAULT_RADIUS_X,
-  ELLIPSE_DEFAULT_RADIUS_Y,
-  ELLIPSE_DEFAULT_THICKNESS,
   ELLIPSE_HIT_PADDING,
   ELLIPSE_MIN_RADIUS_X,
   ELLIPSE_MIN_RADIUS_Y,
   FALLBACK_COLORS,
   KEYBOARD_PAN_STEP,
   KEYBOARD_SHORTCUTS,
-  LINE_DEFAULT_ANGLE,
   LINE_DEFAULT_COLOR,
-  LINE_DEFAULT_LENGTH,
-  LINE_DEFAULT_THICKNESS,
   LINE_HIT_PADDING,
   LINE_MIN_LENGTH,
   LINE_MIN_THICKNESS,
@@ -71,15 +63,10 @@ import {
   MIN_ZOOM,
   NODE_COLOR_OPTIONS,
   RECTANGLE_DEFAULT_COLOR,
-  RECTANGLE_DEFAULT_HEIGHT,
-  RECTANGLE_DEFAULT_THICKNESS,
-  RECTANGLE_DEFAULT_WIDTH,
   RECTANGLE_HIT_PADDING,
   RECTANGLE_MIN_HEIGHT,
   RECTANGLE_MIN_WIDTH,
   RING_DEFAULT_COLOR,
-  RING_DEFAULT_RADIUS,
-  RING_DEFAULT_THICKNESS,
   RING_HIT_PADDING,
   RING_MIN_RADIUS,
   SHAPE_HANDLE_SCREEN_SIZE,
@@ -164,6 +151,7 @@ type InteractionState =
     }
   | {
       mode: 'shape-move'
+      positions: { shapeId: string; x: number; y: number }[]
       pointerId: number
       shapeId: string
       offsetX: number
@@ -291,7 +279,7 @@ function getShapeThicknessRange(shape: MindMapShape | null) {
   return { min: 1, max: 24 }
 }
 
-function getNextNodeColor(referenceColor?: string) {
+function getNextColor(referenceColor?: string) {
   if (FALLBACK_COLORS.length === 0) {
     return DEFAULT_NODE_COLOR
   }
@@ -338,6 +326,7 @@ export default function App() {
       selectedNodeIds,
       selectedAnnotationId,
       selectedShapeId,
+      selectedShapeIds,
       history,
     },
     dispatch,
@@ -350,7 +339,7 @@ export default function App() {
   const selectedNodeRef = useRef<string[]>([...selectedNodeIds])
   const selectedAnnotationRef = useRef(selectedAnnotationId)
   const shapesRef = useRef(shapes)
-  const selectedShapeRef = useRef(selectedShapeId)
+  const selectedShapeRef = useRef(selectedShapeIds)
   const crossLinksRef = useRef(crossLinks)
   const clipboardRef = useRef<ClipboardSnapshot | null>(null)
 
@@ -663,6 +652,7 @@ export default function App() {
     [],
   )
 
+  const labelCacheRef = useRef(new Map<string, { key: string; layout: NodeLabelLayout }>())
   const measureNodeLabel = useCallback(
     (node: MindMapNode): NodeLabelLayout => {
       const context = contextRef.current
@@ -680,9 +670,11 @@ export default function App() {
         }
       }
 
+      const cacheKey = JSON.stringify([label, textSize, node.parentId === null])
+      const cached = labelCacheRef.current.get(node.id)
+      if (cached?.key === cacheKey) return cached.layout
       const previousFont = context.font
       context.font = getNodeFont(textSize)
-      const layout = calculateNodeLabelLayout(context, label, textSize)
       const resolvedLayout = node.parentId !== null && label.length <= 24
         ? {
             lines: [label],
@@ -691,9 +683,10 @@ export default function App() {
             lineHeight: getNodeLineHeight(textSize),
             radius: calculateNodeRadius(context.measureText(label).width, getNodeLineHeight(textSize)),
           }
-        : layout
+        : calculateNodeLabelLayout(context, label, textSize)
       context.font = previousFont
 
+      labelCacheRef.current.set(node.id, { key: cacheKey, layout: resolvedLayout })
       return resolvedLayout
     },
     [],
@@ -762,7 +755,7 @@ export default function App() {
     setIsGridModeEnabled((previous) => !previous)
   }, [])
 
-  const drawScene = useCallback(() => {
+  const renderScene = useCallback(() => {
     const context = contextRef.current
     if (!context) {
       return
@@ -778,7 +771,7 @@ export default function App() {
     const annotationsToDraw = annotationsRef.current
     const selectedAnnotationId = selectedAnnotationRef.current
     const shapesToDraw = shapesRef.current
-    const selectedShapeId = selectedShapeRef.current
+    const selectedShapeIds = new Set(selectedShapeRef.current)
     const crossLinksToDraw = crossLinksRef.current
     const { scale, offsetX, offsetY } = viewRef.current
 
@@ -876,7 +869,7 @@ export default function App() {
         context.stroke()
         clearCanvasShadow(context)
 
-        if (shape.id === selectedShapeId) {
+        if (selectedShapeIds.has(shape.id)) {
           context.lineWidth = Math.max(1.5 / scale, 1)
           context.strokeStyle = selectionColor
           context.setLineDash([5 / scale, 4 / scale])
@@ -907,7 +900,7 @@ export default function App() {
         context.stroke()
         clearCanvasShadow(context)
 
-        if (shape.id === selectedShapeId) {
+        if (selectedShapeIds.has(shape.id)) {
           context.lineWidth = Math.max(1.5 / scale, 1)
           context.strokeStyle = selectionColor
           context.setLineDash([5 / scale, 4 / scale])
@@ -938,7 +931,7 @@ export default function App() {
         context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
         clearCanvasShadow(context)
 
-        if (shape.id === selectedShapeId) {
+        if (selectedShapeIds.has(shape.id)) {
           context.lineWidth = Math.max(1.5 / scale, 1)
           context.strokeStyle = selectionColor
           context.setLineDash([5 / scale, 4 / scale])
@@ -970,7 +963,7 @@ export default function App() {
         context.stroke()
         clearCanvasShadow(context)
 
-        if (shape.id === selectedShapeId) {
+        if (selectedShapeIds.has(shape.id)) {
           context.lineWidth = Math.max(1.5 / scale, outlineWidth)
           context.strokeStyle = selectionColor
           context.setLineDash([5 / scale, 4 / scale])
@@ -1008,7 +1001,7 @@ export default function App() {
         context.stroke()
         clearCanvasShadow(context)
 
-        if (shape.id === selectedShapeId) {
+        if (selectedShapeIds.has(shape.id)) {
           context.beginPath()
           context.moveTo(start.x, start.y)
           context.lineTo(end.x, end.y)
@@ -1230,6 +1223,28 @@ export default function App() {
     context.restore()
   }, [backgroundTheme, measureAnnotation, measureNodeLabel])
 
+  const frameRef = useRef<number | null>(null)
+  const drawScene = useCallback(() => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null
+      renderScene()
+    })
+  }, [renderScene])
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    void document.fonts.ready.then(() => {
+      if (disposed) return
+      labelCacheRef.current.clear()
+      drawScene()
+    })
+    return () => { disposed = true }
+  }, [drawScene])
+
   useEffect(() => {
     gridModeRef.current = isGridModeEnabled
     drawScene()
@@ -1297,20 +1312,24 @@ export default function App() {
 
   useEffect(() => {
     nodesRef.current = nodes
+    for (const id of labelCacheRef.current.keys()) {
+      if (!nodeById.has(id)) labelCacheRef.current.delete(id)
+    }
     annotationsRef.current = annotations
     selectedNodeRef.current = [...selectedNodeIds]
     selectedAnnotationRef.current = selectedAnnotationId
     shapesRef.current = shapes
-    selectedShapeRef.current = selectedShapeId
+    selectedShapeRef.current = selectedShapeIds
     crossLinksRef.current = crossLinks
     drawScene()
   }, [
     annotations,
     crossLinks,
     nodes,
+    nodeById,
     selectedAnnotationId,
     selectedNodeIds,
-    selectedShapeId,
+    selectedShapeIds,
     shapes,
     drawScene,
   ])
@@ -1537,6 +1556,7 @@ export default function App() {
       const hitResizeShape = [...shapesRef.current]
         .reverse()
         .find((shape) => {
+          if (!selectedShapeRef.current.includes(shape.id) || event.shiftKey || event.ctrlKey || event.metaKey) return false
           if (shape.kind === 'ring') {
             const radius = Math.max(shape.radius, 0)
             const handleX = shape.x + radius
@@ -1883,7 +1903,18 @@ export default function App() {
       if (hitShape) {
         dispatch({ type: 'CLEAR_SELECTED_NODES' })
         dispatch({ type: 'SELECT_ANNOTATION', annotationId: null })
-        dispatch({ type: 'SELECT_SHAPE', shapeId: hitShape.id })
+        const existing = selectedShapeRef.current
+        const selected = existing.includes(hitShape.id)
+        if (event.shiftKey || event.metaKey || event.ctrlKey) {
+          const ids = selected ? existing.filter((id) => id !== hitShape.id) : [...existing, hitShape.id]
+          selectedShapeRef.current = ids
+          dispatch({ type: 'SET_SELECTED_SHAPES', shapeIds: ids })
+          event.preventDefault()
+          return
+        }
+        const ids = selected ? existing : [hitShape.id]
+        selectedShapeRef.current = ids
+        dispatch({ type: 'SET_SELECTED_SHAPES', shapeIds: ids })
 
         if (isLocked) {
           event.preventDefault()
@@ -1892,6 +1923,7 @@ export default function App() {
 
         interactionRef.current = {
           mode: 'shape-move',
+          positions: shapesRef.current.filter((shape) => ids.includes(shape.id)).map(({ id, x, y }) => ({ shapeId: id, x, y })),
           pointerId: event.pointerId,
           shapeId: hitShape.id,
           offsetX: scenePoint.x - hitShape.x,
@@ -2056,12 +2088,12 @@ export default function App() {
           return
         }
 
-        dispatch({
-          type: 'MOVE_SHAPE',
-          shapeId: interaction.shapeId,
-          x: target.x,
-          y: target.y,
-        })
+        const origin = interaction.positions.find((position) => position.shapeId === interaction.shapeId)!
+        dispatch({ type: 'MOVE_SHAPES', updates: interaction.positions.map((position) => ({
+          shapeId: position.shapeId,
+          x: position.x + target.x - origin.x,
+          y: position.y + target.y - origin.y,
+        })) })
         return
       }
 
@@ -2378,7 +2410,7 @@ export default function App() {
     const distance = LINK_DISTANCE + siblings.length * 10
     const nextX = parent.x + Math.cos(angle) * distance
     const nextY = parent.y + Math.sin(angle) * distance
-    const nodeColor = getNextNodeColor(parent.color)
+    const nodeColor = getNextColor(parent.color)
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -2507,7 +2539,7 @@ export default function App() {
     const worldCenterX = width === 0 ? 0 : -offsetX / scale
     const worldCenterY = height === 0 ? 0 : -offsetY / scale
     const colorReference = primarySelectedNode?.color ?? nodes[nodes.length - 1]?.color
-    const nodeColor = getNextNodeColor(colorReference)
+    const nodeColor = getNextColor(colorReference)
 
     const newNodeId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -2561,178 +2593,13 @@ export default function App() {
     })
   }, [dispatch, isLocked])
 
-  const handleAddRing = useCallback(() => {
-    if (isLocked) {
-      return
-    }
-
+  const handleAddShape = useCallback((kind: MindMapShape['kind']) => {
+    if (isLocked) return
     const { scale, offsetX, offsetY } = viewRef.current
-    const { width, height } = sizeRef.current
-
-    const worldCenterX = width === 0 ? 0 : -offsetX / scale
-    const worldCenterY = height === 0 ? 0 : -offsetY / scale
-
-    const basePoint = { x: worldCenterX, y: worldCenterY }
-    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
-
-    const newShapeId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-    dispatch({
-      type: 'ADD_SHAPE',
-      shape: {
-        id: newShapeId,
-        kind: 'ring',
-        x: centerPoint.x,
-        y: centerPoint.y,
-        radius: RING_DEFAULT_RADIUS,
-        thickness: RING_DEFAULT_THICKNESS,
-        color: RING_DEFAULT_COLOR,
-      },
-    })
-    setToolbarCollapsed(false)
-  }, [dispatch, isLocked])
-
-  const handleAddEllipse = useCallback(() => {
-    if (isLocked) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = viewRef.current
-    const { width, height } = sizeRef.current
-
-    const worldCenterX = width === 0 ? 0 : -offsetX / scale
-    const worldCenterY = height === 0 ? 0 : -offsetY / scale
-
-    const basePoint = { x: worldCenterX, y: worldCenterY }
-    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
-
-    const newShapeId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-    dispatch({
-      type: 'ADD_SHAPE',
-      shape: {
-        id: newShapeId,
-        kind: 'ellipse',
-        x: centerPoint.x,
-        y: centerPoint.y,
-        radiusX: ELLIPSE_DEFAULT_RADIUS_X,
-        radiusY: ELLIPSE_DEFAULT_RADIUS_Y,
-        thickness: ELLIPSE_DEFAULT_THICKNESS,
-        color: ELLIPSE_DEFAULT_COLOR,
-      },
-    })
-    setToolbarCollapsed(false)
-  }, [dispatch, isLocked])
-
-  const handleAddRectangle = useCallback(() => {
-    if (isLocked) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = viewRef.current
-    const { width, height } = sizeRef.current
-
-    const worldCenterX = width === 0 ? 0 : -offsetX / scale
-    const worldCenterY = height === 0 ? 0 : -offsetY / scale
-
-    const basePoint = { x: worldCenterX, y: worldCenterY }
-    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
-
-    const newShapeId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-    dispatch({
-      type: 'ADD_SHAPE',
-      shape: {
-        id: newShapeId,
-        kind: 'rectangle',
-        x: centerPoint.x,
-        y: centerPoint.y,
-        width: RECTANGLE_DEFAULT_WIDTH,
-        height: RECTANGLE_DEFAULT_HEIGHT,
-        thickness: RECTANGLE_DEFAULT_THICKNESS,
-        color: RECTANGLE_DEFAULT_COLOR,
-      },
-    })
-    setToolbarCollapsed(false)
-  }, [dispatch, isLocked])
-
-  const handleAddArrow = useCallback(() => {
-    if (isLocked) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = viewRef.current
-    const { width, height } = sizeRef.current
-
-    const worldCenterX = width === 0 ? 0 : -offsetX / scale
-    const worldCenterY = height === 0 ? 0 : -offsetY / scale
-
-    const basePoint = { x: worldCenterX, y: worldCenterY }
-    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
-
-    const newShapeId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-    dispatch({
-      type: 'ADD_SHAPE',
-      shape: {
-        id: newShapeId,
-        kind: 'arrow',
-        x: centerPoint.x,
-        y: centerPoint.y,
-        width: ARROW_DEFAULT_WIDTH,
-        height: ARROW_DEFAULT_HEIGHT,
-        thickness: ARROW_DEFAULT_THICKNESS,
-        angle: ARROW_DEFAULT_ANGLE,
-        color: ARROW_DEFAULT_COLOR,
-      },
-    })
-    setToolbarCollapsed(false)
-  }, [dispatch, isLocked])
-
-  const handleAddLine = useCallback(() => {
-    if (isLocked) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = viewRef.current
-    const { width, height } = sizeRef.current
-
-    const worldCenterX = width === 0 ? 0 : -offsetX / scale
-    const worldCenterY = height === 0 ? 0 : -offsetY / scale
-
-    const basePoint = { x: worldCenterX, y: worldCenterY }
-    const centerPoint = gridModeRef.current ? snapPoint(basePoint, GRIDLINE_SPACING) : basePoint
-
-    const newShapeId =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `shape-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-    dispatch({
-      type: 'ADD_SHAPE',
-      shape: {
-        id: newShapeId,
-        kind: 'line',
-        x: centerPoint.x,
-        y: centerPoint.y,
-        length: LINE_DEFAULT_LENGTH,
-        thickness: LINE_DEFAULT_THICKNESS,
-        angle: LINE_DEFAULT_ANGLE,
-        color: LINE_DEFAULT_COLOR,
-      },
-    })
+    const point = { x: -offsetX / scale, y: -offsetY / scale }
+    const center = gridModeRef.current ? snapPoint(point, GRIDLINE_SPACING) : point
+    dispatch({ type: 'ADD_SHAPE', shape: createShape(kind, center,
+      getNextColor(shapesRef.current[shapesRef.current.length - 1]?.color)) })
     setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
@@ -2742,7 +2609,7 @@ export default function App() {
     }
 
     if (selectedShape) {
-      dispatch({ type: 'DELETE_SHAPE', shapeId: selectedShape.id })
+      dispatch({ type: 'DELETE_SHAPES', shapeIds: selectedShapeIds })
       return
     }
 
@@ -2769,7 +2636,7 @@ export default function App() {
     }
 
     dispatch({ type: 'DELETE_NODES', nodeIds: removableIds })
-  }, [dispatch, isLocked, selectedAnnotation, selectedNodes, selectedShape])
+  }, [dispatch, isLocked, selectedAnnotation, selectedNodes, selectedShape, selectedShapeIds])
 
   const handleCopyNodes = useCallback(() => {
     if (isLocked) {
@@ -3247,9 +3114,7 @@ export default function App() {
       }
 
       if (selectedShape) {
-        if (selectedShape.color !== nextColor) {
-          dispatch({ type: 'UPDATE_SHAPE', shapeId: selectedShape.id, updates: { color: nextColor } })
-        }
+        dispatch({ type: 'COLOR_SHAPES', shapeIds: selectedShapeIds, color: nextColor })
         return
       }
 
@@ -3273,7 +3138,7 @@ export default function App() {
         updates,
       })
     },
-    [dispatch, isLocked, selectedNodes, selectedShape],
+    [dispatch, isLocked, selectedNodes, selectedShape, selectedShapeIds],
   )
 
   const handleShapeThicknessChange = useCallback(
@@ -3383,13 +3248,13 @@ export default function App() {
   const shapeColorOptions = SHAPE_COLOR_OPTIONS.map((option) => ({
     value: option.value,
     label: option.label,
-    isSelected: selectedShape?.color.toLowerCase() === option.value.toLowerCase(),
+    isSelected: selectedShapeIds.length > 0 && shapes.filter((shape) => selectedShapeIds.includes(shape.id)).every((shape) => shape.color.toLowerCase() === option.value.toLowerCase()),
   }))
   const activeColorOptions = selectedShape ? shapeColorOptions : nodeColorOptions
   const showColorControls = hasNodeSelection || Boolean(selectedShape)
   const colorControlLabel = selectedShape ? 'Shape color' : 'Node color'
   const colorApplyTarget = selectedShape
-    ? 'the selected shape'
+    ? (selectedShapeIds.length > 1 ? 'all selected shapes' : 'the selected shape')
     : selectedNodes.length > 1
     ? 'all selected nodes'
     : 'the selected node'
@@ -3473,7 +3338,7 @@ export default function App() {
       title: 'Add a ring to group related ideas',
       ariaLabel: 'Add ring',
       disabled: isLocked,
-      onClick: handleAddRing,
+      onClick: () => handleAddShape('ring'),
       icon: (
         <MindMapToolIcon name="ring" />
       ),
@@ -3485,7 +3350,7 @@ export default function App() {
       title: 'Add an ellipse to spotlight a region',
       ariaLabel: 'Add ellipse',
       disabled: isLocked,
-      onClick: handleAddEllipse,
+      onClick: () => handleAddShape('ellipse'),
       icon: (
         <MindMapToolIcon name="ellipse" />
       ),
@@ -3497,7 +3362,7 @@ export default function App() {
       title: 'Add a rectangle to frame ideas',
       ariaLabel: 'Add rectangle',
       disabled: isLocked,
-      onClick: handleAddRectangle,
+      onClick: () => handleAddShape('rectangle'),
       icon: (
         <MindMapToolIcon name="rectangle" />
       ),
@@ -3509,7 +3374,7 @@ export default function App() {
       title: 'Add an arrow to highlight a flow',
       ariaLabel: 'Add arrow',
       disabled: isLocked,
-      onClick: handleAddArrow,
+      onClick: () => handleAddShape('arrow'),
       icon: (
         <MindMapToolIcon name="arrow" />
       ),
@@ -3521,7 +3386,7 @@ export default function App() {
       title: 'Add a straight line connector',
       ariaLabel: 'Add line',
       disabled: isLocked,
-      onClick: handleAddLine,
+      onClick: () => handleAddShape('line'),
       icon: (
         <MindMapToolIcon name="line" />
       ),
@@ -3628,40 +3493,52 @@ export default function App() {
     <div className={appShellClassName}>
       <canvas ref={canvasRef} className="mindmap-canvas" />
       {marqueeStyle ? <div className="mindmap-marquee" style={marqueeStyle} /> : null}
-      <MindMapToolbar
-        isCollapsed={isToolbarCollapsed}
-        toolbarBodyId={toolbarBodyId}
-        onToggleCollapse={toggleToolbarCollapsed}
-        creationActions={creationActions}
-        shapeActions={shapeActions}
-        showTextControls={Boolean(selectedTextTarget)}
-        textEditorLabel={textEditorLabel}
-        textDraft={textDraft}
-        onTextChange={handleTextChange}
-        onTextKeyDown={handleTextEditorKeyDown}
-        textInputPlaceholder={textEditorPlaceholder}
-        isTextEditingDisabled={isTextEditingDisabled}
-        textInputAriaLabel={textInputAriaLabel}
-        textInputTitle={isLocked ? 'Unlock edits to change text' : undefined}
-        textInputRef={textInputRef}
-        selectedTextSize={selectedTextSize}
-        onTextSizeChange={handleTextSizeChange}
-        textSizeAriaLabel={textSizeAriaLabel}
-        textSizeTitle={isLocked ? 'Unlock edits to change text size' : undefined}
-        textSizeOptions={textSizeOptions}
-        showColorControls={showColorControls}
-        colorControlLabel={colorControlLabel}
-        hasMixedColors={hasMixedNodeColors}
-        colorApplyTarget={colorApplyTarget}
-        isColorDisabled={isLocked || !showColorControls}
-        colorOptions={activeColorOptions}
-        onColorChange={handleColorChange}
-        showShapeThickness={Boolean(selectedShape)}
-        shapeThickness={selectedShape?.thickness ?? 1}
-        shapeThicknessMin={shapeThicknessRange.min}
-        shapeThicknessMax={shapeThicknessRange.max}
-        onShapeThicknessChange={handleShapeThicknessChange}
-      />
+      <MindMapControlDock>
+        <MindMapToolbar
+          isCollapsed={isToolbarCollapsed}
+          toolbarBodyId={toolbarBodyId}
+          onToggleCollapse={toggleToolbarCollapsed}
+          creationActions={creationActions}
+          shapeActions={shapeActions}
+          showTextControls={Boolean(selectedTextTarget)}
+          textEditorLabel={textEditorLabel}
+          textDraft={textDraft}
+          onTextChange={handleTextChange}
+          onTextKeyDown={handleTextEditorKeyDown}
+          textInputPlaceholder={textEditorPlaceholder}
+          isTextEditingDisabled={isTextEditingDisabled}
+          textInputAriaLabel={textInputAriaLabel}
+          textInputTitle={isLocked ? 'Unlock edits to change text' : undefined}
+          textInputRef={textInputRef}
+          selectedTextSize={selectedTextSize}
+          onTextSizeChange={handleTextSizeChange}
+          textSizeAriaLabel={textSizeAriaLabel}
+          textSizeTitle={isLocked ? 'Unlock edits to change text size' : undefined}
+          textSizeOptions={textSizeOptions}
+          showColorControls={showColorControls}
+          colorControlLabel={colorControlLabel}
+          hasMixedColors={selectedShape ? !shapeColorOptions.some((option) => option.isSelected) : hasMixedNodeColors}
+          colorApplyTarget={colorApplyTarget}
+          isColorDisabled={isLocked || !showColorControls}
+          colorOptions={activeColorOptions}
+          onColorChange={handleColorChange}
+          showShapeThickness={selectedShapeIds.length === 1}
+          shapeThickness={selectedShape?.thickness ?? 1}
+          shapeThicknessMin={shapeThicknessRange.min}
+          shapeThicknessMax={shapeThicknessRange.max}
+          onShapeThicknessChange={handleShapeThicknessChange}
+        />
+        <MindMapActionsPanel
+          isCollapsed={areActionsCollapsed}
+          actionsBodyId={actionsBodyId}
+          title={isLocked ? 'Review tools' : 'Edit tools'}
+          onToggleCollapse={toggleActionsCollapsed}
+          toggleTitle={actionsToggleTitle}
+          toggleLabel={actionsToggleLabel}
+          toggleIcon={actionsToggleIcon}
+          groups={actionGroups}
+        />
+      </MindMapControlDock>
       <MindMapWorkspacePanel
         workspaceStatus={workspaceStatus}
         isLocked={isLocked}
@@ -3680,16 +3557,6 @@ export default function App() {
         shortcutsListRef={shortcutsListRef}
         fileInputRef={fileInputRef}
         onFileChange={handleFileChange}
-      />
-      <MindMapActionsPanel
-        isCollapsed={areActionsCollapsed}
-        actionsBodyId={actionsBodyId}
-        title={isLocked ? 'Review tools' : 'Edit tools'}
-        onToggleCollapse={toggleActionsCollapsed}
-        toggleTitle={actionsToggleTitle}
-        toggleLabel={actionsToggleLabel}
-        toggleIcon={actionsToggleIcon}
-        groups={actionGroups}
       />
       <MindMapNavigation
         zoomPercentage={zoomPercentage}

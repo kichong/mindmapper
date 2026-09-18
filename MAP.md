@@ -8,15 +8,20 @@
 - `README.md`: product overview, quick start, and current source layout.
 - `llms.txt`: locked JSON contract and map-authoring guidance. Keep imports/exports backward compatible with this file.
 - `src/App.tsx`: canvas runtime, interaction flow, selection logic, and panel wiring.
-- `src/state/MindMapContext.tsx`: state model, reducer, undo/redo, and local persistence.
+- `src/state/MindMapContext.tsx`: React provider and state access.
+- `src/state/mindMapReducer.ts`: state model, pure reducer, undo/redo, and legacy storage loading.
+- `src/state/useMindMapPersistence.ts`: debounced saves and page lifecycle flushes.
 - `src/utils/mindMapDocument.ts`: JSON import/export sanitization and serialization. Start here for schema-safe changes.
 
 ## Quick Routing
 - UI chrome and panel layout: `src/components/`, `src/App.css`, `src/index.css`
 - Canvas behavior and input handling: `src/App.tsx`
+- Control placement and overflow: `src/components/MindMapControlDock.tsx`, `src/App.css`
+- Shared shape creation: `src/utils/createShape.ts`
+- Regression tests: `tests/mindMap.test.ts`, `scripts/test.mjs`
 - Shared constants and shortcuts: `src/constants/mindMap.ts`
 - Geometry, typography, view fitting, and export rendering: `src/utils/`
-- Persistence and history behavior: `src/state/MindMapContext.tsx`
+- Persistence and history behavior: `src/state/mindMapReducer.ts`, `src/state/useMindMapPersistence.ts`
 - Import/export compatibility: `llms.txt`, `src/utils/mindMapDocument.ts`
 
 ## Layout
@@ -29,6 +34,7 @@
 
 ## Commands
 - `npm run dev`: local dev server
+- `npm test`: JSON compatibility, selection, and history regression tests
 - `npm run lint`: lint check
 - `npm run build`: type-check and production build
 - `npm run preview`: preview built app

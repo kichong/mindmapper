@@ -8,7 +8,9 @@
 ## High-Signal Files
 - `src/App.tsx`: canvas runtime, input handling, selection, and feature orchestration.
 - `src/components/`: toolbar, workspace panel, actions panel, and viewport controls.
-- `src/state/MindMapContext.tsx`: types, reducer, history rules, and local persistence.
+- `src/state/mindMapReducer.ts`: types, reducer, history rules, and legacy storage loading.
+- `src/state/MindMapContext.tsx`: React provider and state access.
+- `src/state/useMindMapPersistence.ts`: debounced local persistence and lifecycle flushes.
 - `src/utils/mindMapDocument.ts`: backward-compatible JSON sanitization and serialization.
 - `src/constants/mindMap.ts`: shared sizing, colors, shortcuts, and canvas constants.
 
@@ -24,7 +26,7 @@
 1. Start from `MAP.md`, then open only the files for the task area.
 2. For behavior changes, inspect `src/App.tsx` plus the relevant shared utility or state file.
 3. For UI chrome changes, inspect the extracted component in `src/components/` before editing `src/App.tsx`.
-4. After changes, run `npm run lint` and `npm run build`.
+4. After changes, run `npm test`, `npm run lint`, and `npm run build`.
 
 ## Maintenance
 - Update `MAP.md` if routing changes.

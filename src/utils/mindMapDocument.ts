@@ -39,10 +39,10 @@ export type MindMapDocument = {
 export const serializeMindMapDocument = (document: MindMapDocument) =>
   JSON.stringify(
     {
-      nodes: document.nodes.map((node) => ({ ...node })),
-      annotations: document.annotations.map((annotation) => ({ ...annotation })),
-      shapes: document.shapes.map((shape) => ({ ...shape })),
-      crossLinks: document.crossLinks.map((link) => ({ ...link })),
+      nodes: document.nodes,
+      annotations: document.annotations,
+      shapes: document.shapes,
+      crossLinks: document.crossLinks,
       exportedAt: new Date().toISOString(),
     },
     null,
@@ -75,7 +75,7 @@ export const sanitizeImportedNodes = (value: unknown): MindMapNode[] | null => {
       textSize: normalizeTextSize((node as { textSize?: unknown }).textSize),
     }))
 
-  return sanitized.length > 0 ? sanitized : null
+  return value.length === 0 || sanitized.length > 0 ? sanitized : null
 }
 
 export const sanitizeImportedAnnotations = (value: unknown): MindMapAnnotation[] => {
