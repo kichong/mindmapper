@@ -21,6 +21,7 @@ import {
   type ToolbarActionButton,
 } from './components/MindMapToolbar'
 import { MindMapWorkspacePanel } from './components/MindMapWorkspacePanel'
+import { MindMapToolIcon } from './components/MindMapToolIcon'
 import {
   DEFAULT_NODE_COLOR,
   ROOT_NODE_ID,
@@ -34,8 +35,6 @@ import {
   useMindMap,
 } from './state/MindMapContext'
 import {
-  ANNOTATION_MIN_WIDTH,
-  ANNOTATION_PADDING_Y,
   ARROW_DEFAULT_ANGLE,
   ARROW_DEFAULT_COLOR,
   ARROW_DEFAULT_HEIGHT,
@@ -84,6 +83,7 @@ import {
   RING_HIT_PADDING,
   RING_MIN_RADIUS,
   SHAPE_HANDLE_SCREEN_SIZE,
+  SHAPE_COLOR_OPTIONS,
   VISIBLE_SHORTCUT_COUNT,
   ZOOM_STEP,
   GRIDLINE_SPACING,
@@ -116,9 +116,9 @@ import {
   calculateNodeLabelLayout,
   calculateNodeRadius,
   getAnnotationFont,
-  getAnnotationLineHeight,
   getNodeFont,
   getNodeLineHeight,
+  getNodeVisualMetrics,
   measureAnnotationMetrics,
   type AnnotationMetrics,
   type NodeLabelLayout,
@@ -214,6 +214,82 @@ type ClipboardSnapshot = {
 }
 
 const GRID_SNAP_EPSILON = 0.5
+
+function ControlGlyph({ kind }: { kind: 'lock' | 'unlock' | 'dark' | 'light' | 'grid' }) {
+  if (kind === 'lock' || kind === 'unlock') {
+    return (
+      <svg viewBox="0 0 20 20" className="mindmap-actions__glyph" aria-hidden="true">
+        <rect x="5.2" y="8.6" width="9.6" height="7.2" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <path d={kind === 'lock' ? 'M7.2 8.6V6.7a2.8 2.8 0 0 1 5.6 0v1.9' : 'M12.8 8.6V6.7a2.8 2.8 0 0 0-5.6 0'} fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
+      </svg>
+    )
+  }
+
+  if (kind === 'grid') {
+    return (
+      <svg viewBox="0 0 20 20" className="mindmap-actions__glyph" aria-hidden="true">
+        {[5, 10, 15].flatMap((x) => [5, 10, 15].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r=".75" fill="currentColor" />))}
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 20 20" className="mindmap-actions__glyph" aria-hidden="true">
+      <circle cx="10" cy="10" r="4" fill={kind === 'dark' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" />
+      {kind === 'light' ? <path d="M10 2.2v2M10 15.8v2M2.2 10h2M15.8 10h2M4.5 4.5 6 6M14 14l1.5 1.5M15.5 4.5 14 6M6 14l-1.5 1.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" /> : null}
+    </svg>
+  )
+}
+
+function drawShapeHandle(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  theme: 'dark' | 'light',
+) {
+  const radius = SHAPE_HANDLE_SCREEN_SIZE / scale / 2
+  context.save()
+  context.shadowColor = theme === 'dark' ? 'rgba(120, 213, 227, 0.36)' : 'rgba(6, 127, 163, 0.2)'
+  context.shadowBlur = 8 / scale
+  context.fillStyle = theme === 'dark' ? '#091116' : '#f8fbfc'
+  context.strokeStyle = theme === 'dark' ? '#a8e7ef' : '#087f9d'
+  context.lineWidth = 1.5 / scale
+  context.beginPath()
+  context.arc(x, y, radius, 0, Math.PI * 2)
+  context.fill()
+  context.stroke()
+  context.fillStyle = theme === 'dark' ? '#78d5e3' : '#087f9d'
+  context.beginPath()
+  context.arc(x, y, 1.8 / scale, 0, Math.PI * 2)
+  context.fill()
+  context.restore()
+}
+
+function applyShapeGlow(
+  context: CanvasRenderingContext2D,
+  color: string,
+  theme: 'dark' | 'light',
+) {
+  context.shadowColor = theme === 'dark' ? color : 'rgba(20, 48, 61, 0.12)'
+  context.shadowBlur = theme === 'dark' ? 9 : 6
+}
+
+function clearCanvasShadow(context: CanvasRenderingContext2D) {
+  context.shadowColor = 'transparent'
+  context.shadowBlur = 0
+}
+
+function getShapeThicknessRange(shape: MindMapShape | null) {
+  if (shape?.kind === 'arrow') {
+    return {
+      min: 4,
+      max: Math.max(16, Math.min(48, Math.round(Math.abs(shape.height) * 0.32))),
+    }
+  }
+
+  return { min: 1, max: 24 }
+}
 
 function snapValue(value: number, spacing: number): number {
   if (spacing <= 0) {
@@ -365,6 +441,10 @@ export default function App() {
   }, [nodeById, selectedNodes])
 
   const selectedTextTarget = useMemo(() => {
+    if (selectedShape) {
+      return null
+    }
+
     if (singleSelectedNode) {
       return {
         kind: 'node' as const,
@@ -384,7 +464,7 @@ export default function App() {
     }
 
     return null
-  }, [selectedAnnotation, singleSelectedNode])
+  }, [selectedAnnotation, selectedShape, singleSelectedNode])
 
   const [textDraft, setTextDraft] = useState(() => selectedTextTarget?.text ?? '')
   const [clipboardStatus, setClipboardStatus] = useState<'empty' | 'ready'>('empty')
@@ -435,8 +515,8 @@ export default function App() {
 
   useEffect(() => {
     // Keep the rest of the page in step with the canvas background choice
-    const darkColor = '#020409'
-    const lightColor = '#f8fafc'
+    const darkColor = '#05080c'
+    const lightColor = '#edf2f4'
     document.body.style.backgroundColor = backgroundTheme === 'dark' ? darkColor : lightColor
 
     return () => {
@@ -591,9 +671,18 @@ export default function App() {
       const previousFont = context.font
       context.font = getNodeFont(textSize)
       const layout = calculateNodeLabelLayout(context, label, textSize)
+      const resolvedLayout = node.parentId !== null && label.length <= 24
+        ? {
+            lines: [label],
+            width: context.measureText(label).width,
+            height: getNodeLineHeight(textSize),
+            lineHeight: getNodeLineHeight(textSize),
+            radius: calculateNodeRadius(context.measureText(label).width, getNodeLineHeight(textSize)),
+          }
+        : layout
       context.font = previousFont
 
-      return layout
+      return resolvedLayout
     },
     [],
   )
@@ -761,33 +850,31 @@ export default function App() {
 
     shapesToDraw.forEach((shape) => {
       context.save()
+      const selectionColor = backgroundTheme === 'dark' ? '#dff9fc' : '#087f9d'
 
       if (shape.kind === 'ring') {
         const radius = Math.max(shape.radius, 0)
         const strokeWidth = Math.max(1, shape.thickness)
+        const strokeColor = shape.color || RING_DEFAULT_COLOR
+        applyShapeGlow(context, strokeColor, backgroundTheme)
         context.lineWidth = strokeWidth
-        context.strokeStyle = shape.color || RING_DEFAULT_COLOR
+        context.strokeStyle = strokeColor
         context.beginPath()
         context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
         context.stroke()
+        clearCanvasShadow(context)
 
         if (shape.id === selectedShapeId) {
-          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
-          context.lineWidth = highlightWidth
-          context.strokeStyle = '#f97316'
+          context.lineWidth = Math.max(1.5 / scale, 1)
+          context.strokeStyle = selectionColor
+          context.setLineDash([5 / scale, 4 / scale])
           context.beginPath()
           context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
           context.stroke()
 
-          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
-          const handleHalf = handleSize / 2
           const handleX = shape.x + radius
           const handleY = shape.y
-          context.fillStyle = '#facc15'
-          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
-          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#020409'
-          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          drawShapeHandle(context, handleX, handleY, scale, backgroundTheme)
         }
 
         context.restore()
@@ -800,29 +887,25 @@ export default function App() {
         const strokeWidth = Math.max(1, shape.thickness)
         const strokeColor = shape.color || ELLIPSE_DEFAULT_COLOR
 
+        applyShapeGlow(context, strokeColor, backgroundTheme)
         context.beginPath()
         context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
         context.lineWidth = strokeWidth
         context.strokeStyle = strokeColor
         context.stroke()
+        clearCanvasShadow(context)
 
         if (shape.id === selectedShapeId) {
-          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
-          context.lineWidth = highlightWidth
-          context.strokeStyle = '#f97316'
+          context.lineWidth = Math.max(1.5 / scale, 1)
+          context.strokeStyle = selectionColor
+          context.setLineDash([5 / scale, 4 / scale])
           context.beginPath()
           context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
           context.stroke()
 
-          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
-          const handleHalf = handleSize / 2
           const handleX = shape.x + radiusX
           const handleY = shape.y + radiusY
-          context.fillStyle = '#facc15'
-          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
-          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#020409'
-          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          drawShapeHandle(context, handleX, handleY, scale, backgroundTheme)
         }
 
         context.restore()
@@ -837,25 +920,21 @@ export default function App() {
         const strokeWidth = Math.max(1, shape.thickness)
         const strokeColor = shape.color || RECTANGLE_DEFAULT_COLOR
 
+        applyShapeGlow(context, strokeColor, backgroundTheme)
         context.lineWidth = strokeWidth
         context.strokeStyle = strokeColor
         context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
+        clearCanvasShadow(context)
 
         if (shape.id === selectedShapeId) {
-          const highlightWidth = Math.min(strokeWidth, Math.max(2 / scale, 1.5))
-          context.lineWidth = highlightWidth
-          context.strokeStyle = '#f97316'
+          context.lineWidth = Math.max(1.5 / scale, 1)
+          context.strokeStyle = selectionColor
+          context.setLineDash([5 / scale, 4 / scale])
           context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
 
-          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
-          const handleHalf = handleSize / 2
           const handleX = shape.x + halfWidth
           const handleY = shape.y + halfHeight
-          context.fillStyle = '#facc15'
-          context.fillRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
-          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#020409'
-          context.strokeRect(handleX - handleHalf, handleY - handleHalf, handleSize, handleSize)
+          drawShapeHandle(context, handleX, handleY, scale, backgroundTheme)
         }
 
         context.restore()
@@ -866,6 +945,7 @@ export default function App() {
         const polygon = buildArrowPolygon(shape)
         const fillColor = shape.color || ARROW_DEFAULT_COLOR
 
+        applyShapeGlow(context, fillColor, backgroundTheme)
         context.lineJoin = 'round'
         context.lineCap = 'round'
         tracePolygon(context, polygon)
@@ -876,36 +956,21 @@ export default function App() {
         context.lineWidth = outlineWidth
         context.strokeStyle = fillColor
         context.stroke()
+        clearCanvasShadow(context)
 
         if (shape.id === selectedShapeId) {
-          const highlightWidth = Math.max(Math.max(2 / scale, 1.5), outlineWidth)
-          context.lineWidth = highlightWidth
-          context.strokeStyle = '#f97316'
+          context.lineWidth = Math.max(1.5 / scale, outlineWidth)
+          context.strokeStyle = selectionColor
+          context.setLineDash([5 / scale, 4 / scale])
           context.stroke()
 
           const geometry = getArrowGeometry(shape)
-          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
-          const handleHalf = handleSize / 2
           const handlePoint = rotateAndTranslate(
             { x: geometry.halfWidth, y: geometry.halfHeight },
             { x: shape.x, y: shape.y },
             shape.angle ?? 0,
           )
-          context.fillStyle = '#facc15'
-          context.fillRect(
-            handlePoint.x - handleHalf,
-            handlePoint.y - handleHalf,
-            handleSize,
-            handleSize,
-          )
-          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#020409'
-          context.strokeRect(
-            handlePoint.x - handleHalf,
-            handlePoint.y - handleHalf,
-            handleSize,
-            handleSize,
-          )
+          drawShapeHandle(context, handlePoint.x, handlePoint.y, scale, backgroundTheme)
         }
 
         context.restore()
@@ -921,6 +986,7 @@ export default function App() {
         const end = rotateAndTranslate({ x: geometry.halfLength, y: 0 }, center, angle)
         const strokeWidth = Math.max(geometry.halfThickness * 2, LINE_MIN_THICKNESS)
 
+        applyShapeGlow(context, color, backgroundTheme)
         context.lineCap = 'round'
         context.strokeStyle = color
         context.lineWidth = strokeWidth
@@ -928,38 +994,23 @@ export default function App() {
         context.moveTo(start.x, start.y)
         context.lineTo(end.x, end.y)
         context.stroke()
+        clearCanvasShadow(context)
 
         if (shape.id === selectedShapeId) {
-          const highlightWidth = Math.max(Math.max(2 / scale, 1.5), strokeWidth)
           context.beginPath()
           context.moveTo(start.x, start.y)
           context.lineTo(end.x, end.y)
-          context.lineWidth = highlightWidth
-          context.strokeStyle = '#f97316'
+          context.lineWidth = Math.max(1.5 / scale, 1)
+          context.strokeStyle = selectionColor
+          context.setLineDash([5 / scale, 4 / scale])
           context.stroke()
 
-          const handleSize = SHAPE_HANDLE_SCREEN_SIZE / scale
-          const handleHalf = handleSize / 2
           const handlePoint = rotateAndTranslate(
             { x: geometry.halfLength, y: 0 },
             center,
             angle,
           )
-          context.fillStyle = '#facc15'
-          context.fillRect(
-            handlePoint.x - handleHalf,
-            handlePoint.y - handleHalf,
-            handleSize,
-            handleSize,
-          )
-          context.lineWidth = Math.max(1.5 / scale, 1 / scale)
-          context.strokeStyle = '#020409'
-          context.strokeRect(
-            handlePoint.x - handleHalf,
-            handlePoint.y - handleHalf,
-            handleSize,
-            handleSize,
-          )
+          drawShapeHandle(context, handlePoint.x, handlePoint.y, scale, backgroundTheme)
         }
 
       context.restore()
@@ -975,9 +1026,9 @@ export default function App() {
     })
 
     const connectionStrokeStyle =
-      backgroundTheme === 'dark' ? 'rgba(226, 232, 240, 0.8)' : 'rgba(15, 23, 42, 0.7)'
-    const connectionLineWidth = 3
-    const connectionHighlightWidth = Math.max(connectionLineWidth + 1.5, 4)
+      backgroundTheme === 'dark' ? 'rgba(151, 184, 199, 0.48)' : 'rgba(51, 83, 98, 0.38)'
+    const connectionLineWidth = 2
+    const connectionHighlightWidth = Math.max(connectionLineWidth + 1.5, 3.5)
 
     context.lineCap = 'round'
     context.lineJoin = 'round'
@@ -1086,21 +1137,40 @@ export default function App() {
       const nodeY = node.y
       const layout = nodeLayouts.get(node.id) ?? measureNodeLabel(node)
       const radius = layout.radius
+      const visual = getNodeVisualMetrics(layout, node.parentId === null)
 
-      context.fillStyle = node.color || DEFAULT_NODE_COLOR
+      const nodeColor = node.color || DEFAULT_NODE_COLOR
+      context.save()
+      context.shadowColor = backgroundTheme === 'dark' ? nodeColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = backgroundTheme === 'dark' ? (selectedIds.has(node.id) ? 22 : 9) : 6
+      context.fillStyle = backgroundTheme === 'dark' ? 'rgba(10, 17, 23, 0.94)' : 'rgba(250, 252, 253, 0.96)'
+      context.strokeStyle = nodeColor
+      context.lineWidth = node.parentId === null ? 3 : 2
       context.beginPath()
-      context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
+      if (visual.kind === 'circle') {
+        context.arc(nodeX, nodeY, radius, 0, Math.PI * 2)
+      } else {
+        context.roundRect(
+          nodeX - visual.width / 2,
+          nodeY - visual.height / 2,
+          visual.width,
+          visual.height,
+          visual.cornerRadius,
+        )
+      }
       context.fill()
+      context.stroke()
+      context.restore()
 
       if (selectedIds.has(node.id)) {
-        context.lineWidth = connectionHighlightWidth
-        context.strokeStyle = '#f97316'
+        context.lineWidth = connectionHighlightWidth + 1
+        context.strokeStyle = backgroundTheme === 'dark' ? '#9eeaff' : '#067fa3'
         context.stroke()
         context.lineWidth = connectionLineWidth
         context.strokeStyle = connectionStrokeStyle
       }
 
-      context.fillStyle = '#ffffff'
+      context.fillStyle = backgroundTheme === 'dark' ? '#eef4f8' : '#152631'
       const previousFont = context.font
       const nodeTextSize = normalizeTextSize(node.textSize)
       context.font = getNodeFont(nodeTextSize)
@@ -1128,30 +1198,20 @@ export default function App() {
     annotationsToDraw.forEach((annotation) => {
       const metrics = measureAnnotation(annotation)
       const annotationTextSize = normalizeTextSize(annotation.textSize)
-      const defaultHeight =
-        getAnnotationLineHeight(annotationTextSize) + ANNOTATION_PADDING_Y * 2
-      const widthWithPadding = metrics?.width ?? ANNOTATION_MIN_WIDTH
-      const heightWithPadding = metrics?.height ?? defaultHeight
-      const rectX = annotation.x - widthWithPadding / 2
-      const rectY = annotation.y - heightWithPadding / 2
-
-      context.fillStyle = 'rgba(15, 23, 42, 0.78)'
-      context.fillRect(rectX, rectY, widthWithPadding, heightWithPadding)
-
-      context.lineWidth = annotation.id === selectedAnnotationId ? 3 : 1.5
-      context.strokeStyle =
-        annotation.id === selectedAnnotationId ? '#38bdf8' : 'rgba(148, 163, 184, 0.55)'
-      context.strokeRect(rectX, rectY, widthWithPadding, heightWithPadding)
-
-      context.fillStyle = '#f8fafc'
+      context.fillStyle = backgroundTheme === 'dark' ? '#eef4f8' : '#152631'
       const previousFont = context.font
       const annotationFont = metrics?.font ?? getAnnotationFont(annotationTextSize)
       context.font = annotationFont
+      if (annotation.id === selectedAnnotationId) {
+        context.shadowColor = backgroundTheme === 'dark' ? '#6ddcff' : 'rgba(6, 127, 163, 0.32)'
+        context.shadowBlur = backgroundTheme === 'dark' ? 12 : 7
+      }
       context.fillText(
         annotation.text.length > 0 ? annotation.text : 'New text',
         annotation.x,
         annotation.y,
       )
+      clearCanvasShadow(context)
       context.font = previousFont
     })
 
@@ -2521,6 +2581,7 @@ export default function App() {
         color: RING_DEFAULT_COLOR,
       },
     })
+    setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
   const handleAddEllipse = useCallback(() => {
@@ -2555,6 +2616,7 @@ export default function App() {
         color: ELLIPSE_DEFAULT_COLOR,
       },
     })
+    setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
   const handleAddRectangle = useCallback(() => {
@@ -2589,6 +2651,7 @@ export default function App() {
         color: RECTANGLE_DEFAULT_COLOR,
       },
     })
+    setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
   const handleAddArrow = useCallback(() => {
@@ -2624,6 +2687,7 @@ export default function App() {
         color: ARROW_DEFAULT_COLOR,
       },
     })
+    setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
   const handleAddLine = useCallback(() => {
@@ -2658,6 +2722,7 @@ export default function App() {
         color: LINE_DEFAULT_COLOR,
       },
     })
+    setToolbarCollapsed(false)
   }, [dispatch, isLocked])
 
   const handleDeleteSelection = useCallback(() => {
@@ -3164,9 +3229,20 @@ export default function App() {
     [dispatch, isLocked, selectedTextTarget],
   )
 
-  const handleNodeColorChange = useCallback(
+  const handleColorChange = useCallback(
     (nextColor: string) => {
-      if (isLocked || selectedNodes.length === 0) {
+      if (isLocked) {
+        return
+      }
+
+      if (selectedShape) {
+        if (selectedShape.color !== nextColor) {
+          dispatch({ type: 'UPDATE_SHAPE', shapeId: selectedShape.id, updates: { color: nextColor } })
+        }
+        return
+      }
+
+      if (selectedNodes.length === 0) {
         return
       }
 
@@ -3186,7 +3262,30 @@ export default function App() {
         updates,
       })
     },
-    [dispatch, isLocked, selectedNodes],
+    [dispatch, isLocked, selectedNodes, selectedShape],
+  )
+
+  const handleShapeThicknessChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      if (isLocked || !selectedShape) {
+        return
+      }
+      const requestedThickness = Number(event.target.value)
+      if (!Number.isFinite(requestedThickness)) {
+        return
+      }
+      const range = getShapeThicknessRange(selectedShape)
+      const nextThickness = clamp(requestedThickness, range.min, range.max)
+      if (nextThickness === selectedShape.thickness) {
+        return
+      }
+      dispatch({
+        type: 'UPDATE_SHAPE',
+        shapeId: selectedShape.id,
+        updates: { thickness: nextThickness },
+      })
+    },
+    [dispatch, isLocked, selectedShape],
   )
 
   const toolbarBodyId = 'mindmap-toolbar-body'
@@ -3230,9 +3329,6 @@ export default function App() {
     : 'Text size (select one item first)'
   const hasNodeSelection = selectedNodes.length > 0
   const hasMixedNodeColors = hasNodeSelection && selectedNodeColor === null
-  const shouldShowNodeColorControls = hasNodeSelection
-  const isNodeColorDisabled = isLocked || !hasNodeSelection
-  const nodeColorApplyTarget = selectedNodes.length > 1 ? 'all selected nodes' : 'the selected node'
   const isParentChildButtonDisabled = isLocked || !parentChildLinkStatus.canLink
   const parentChildLinkButtonTitle = isLocked
     ? 'Unlock edits to set a parent-child link'
@@ -3244,19 +3340,19 @@ export default function App() {
     : hasCrossLinkSelection
     ? 'Curve a cross-link between the first two selected ideas'
     : 'Select two ideas to add a cross-link'
-  const lockButtonLabel = isLocked ? 'Unlock edits' : 'Lock edits'
+  const lockButtonLabel = isLocked ? 'Unlock' : 'Lock'
   const lockButtonTitle = isLocked
     ? 'Switch back to editing mode'
     : 'Lock editing so you can explore safely'
-  const lockButtonIcon = isLocked ? '🔒' : '🔓'
+  const lockButtonIcon = <ControlGlyph kind={isLocked ? 'lock' : 'unlock'} />
   const isDarkBackground = backgroundTheme === 'dark'
-  const gridButtonLabel = isGridModeEnabled ? 'Hide grid lines' : 'Show grid lines'
+  const gridButtonLabel = 'Grid'
   const gridButtonTitle = isGridModeEnabled
     ? 'Turn off gridline mode for alignment'
     : 'Turn on gridline mode for alignment'
-  const gridButtonIcon = isGridModeEnabled ? '[#]' : '[]'
-  const backgroundButtonLabel = isDarkBackground ? 'Dark background' : 'Light background'
-  const backgroundButtonIcon = isDarkBackground ? '🌑' : '☀️'
+  const gridButtonIcon = <ControlGlyph kind="grid" />
+  const backgroundButtonLabel = isDarkBackground ? 'Light' : 'Dark'
+  const backgroundButtonIcon = <ControlGlyph kind={isDarkBackground ? 'light' : 'dark'} />
   const backgroundButtonTitle = isDarkBackground
     ? 'Switch to a bright background'
     : 'Switch to a deep background'
@@ -3273,6 +3369,20 @@ export default function App() {
     label: option.label,
     isSelected: selectedNodeColor === option.value,
   }))
+  const shapeColorOptions = SHAPE_COLOR_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+    isSelected: selectedShape?.color.toLowerCase() === option.value.toLowerCase(),
+  }))
+  const activeColorOptions = selectedShape ? shapeColorOptions : nodeColorOptions
+  const showColorControls = hasNodeSelection || Boolean(selectedShape)
+  const colorControlLabel = selectedShape ? 'Shape color' : 'Node color'
+  const colorApplyTarget = selectedShape
+    ? 'the selected shape'
+    : selectedNodes.length > 1
+    ? 'all selected nodes'
+    : 'the selected node'
+  const shapeThicknessRange = getShapeThicknessRange(selectedShape)
   const creationActions: ToolbarActionButton[] = [
     {
       key: 'add-child',
@@ -3281,10 +3391,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddChild,
       icon: (
-        <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--child">
-          +
-        </span>
+        <MindMapToolIcon name="child" />
       ),
+      tone: 'cyan',
       hiddenLabel: 'Add child idea',
     },
     {
@@ -3294,13 +3403,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddStandaloneNode,
       icon: (
-        <span
-          aria-hidden="true"
-          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--detached"
-        >
-          ×
-        </span>
+        <MindMapToolIcon name="idea" />
       ),
+      tone: 'violet',
       hiddenLabel: 'Add new idea',
     },
     {
@@ -3313,13 +3418,9 @@ export default function App() {
       disabled: isParentChildButtonDisabled,
       onClick: handleLinkParentChild,
       icon: (
-        <span
-          aria-hidden="true"
-          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--hierarchy"
-        >
-          |-
-        </span>
+        <MindMapToolIcon name="hierarchy" />
       ),
+      tone: 'neutral',
       hiddenLabel:
         isParentChildButtonDisabled
           ? parentChildLinkStatus.message
@@ -3334,13 +3435,9 @@ export default function App() {
       disabled: isCrossLinkButtonDisabled,
       onClick: handleAddCrossLink,
       icon: (
-        <span
-          aria-hidden="true"
-          className="mindmap-toolbar__symbol mindmap-toolbar__symbol--cross-link"
-        >
-          ∿
-        </span>
+        <MindMapToolIcon name="cross-link" />
       ),
+      tone: 'neutral',
       hiddenLabel:
         isCrossLinkButtonDisabled
           ? 'Select two ideas to add a cross-link'
@@ -3353,10 +3450,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddAnnotation,
       icon: (
-        <span aria-hidden="true" className="mindmap-toolbar__symbol mindmap-toolbar__symbol--text">
-          abc
-        </span>
+        <MindMapToolIcon name="text" />
       ),
+      tone: 'coral',
       hiddenLabel: 'Add textbox',
     },
   ]
@@ -3368,10 +3464,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddRing,
       icon: (
-        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-          <circle cx="12" cy="12" r="8" stroke="#38bdf8" strokeWidth="3" fill="none" />
-        </svg>
+        <MindMapToolIcon name="ring" />
       ),
+      tone: 'cyan',
       hiddenLabel: 'Ring',
     },
     {
@@ -3381,10 +3476,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddEllipse,
       icon: (
-        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-          <ellipse cx="12" cy="12" rx="8" ry="5.5" stroke="#a855f7" strokeWidth="3" fill="none" />
-        </svg>
+        <MindMapToolIcon name="ellipse" />
       ),
+      tone: 'violet',
       hiddenLabel: 'Ellipse',
     },
     {
@@ -3394,10 +3488,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddRectangle,
       icon: (
-        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-          <rect x="5" y="6" width="14" height="12" rx="2" stroke="#34d399" strokeWidth="3" fill="none" />
-        </svg>
+        <MindMapToolIcon name="rectangle" />
       ),
+      tone: 'mint',
       hiddenLabel: 'Rectangle',
     },
     {
@@ -3407,10 +3500,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddArrow,
       icon: (
-        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-          <path d="M4.5 11h8V7.2L20 12l-7.5 4.8V13h-8z" fill="#f97316" />
-        </svg>
+        <MindMapToolIcon name="arrow" />
       ),
+      tone: 'amber',
       hiddenLabel: 'Arrow',
     },
     {
@@ -3420,10 +3512,9 @@ export default function App() {
       disabled: isLocked,
       onClick: handleAddLine,
       icon: (
-        <svg viewBox="0 0 24 24" className="mindmap-toolbar__icon" aria-hidden="true">
-          <line x1="5" y1="18" x2="19" y2="6" stroke="#22d3ee" strokeWidth="3" strokeLinecap="round" />
-        </svg>
+        <MindMapToolIcon name="line" />
       ),
+      tone: 'cyan',
       hiddenLabel: 'Line',
     },
   ]
@@ -3439,7 +3530,6 @@ export default function App() {
           onClick: toggleLock,
           ariaPressed: isLocked,
           icon: lockButtonIcon,
-          hiddenLabel: lockButtonLabel,
         },
         {
           key: 'toggle-background',
@@ -3449,7 +3539,6 @@ export default function App() {
           ariaPressed: isDarkBackground,
           ariaLabel: backgroundButtonTitle,
           icon: backgroundButtonIcon,
-          hiddenLabel: backgroundButtonLabel,
         },
         {
           key: 'toggle-grid',
@@ -3459,7 +3548,6 @@ export default function App() {
           ariaPressed: isGridModeEnabled,
           ariaLabel: gridButtonTitle,
           icon: gridButtonIcon,
-          hiddenLabel: gridButtonLabel,
         },
       ],
     },
@@ -3535,6 +3623,7 @@ export default function App() {
         onToggleCollapse={toggleToolbarCollapsed}
         creationActions={creationActions}
         shapeActions={shapeActions}
+        showTextControls={Boolean(selectedTextTarget)}
         textEditorLabel={textEditorLabel}
         textDraft={textDraft}
         onTextChange={handleTextChange}
@@ -3549,12 +3638,18 @@ export default function App() {
         textSizeAriaLabel={textSizeAriaLabel}
         textSizeTitle={isLocked ? 'Unlock edits to change text size' : undefined}
         textSizeOptions={textSizeOptions}
-        showNodeColorControls={shouldShowNodeColorControls}
-        hasMixedNodeColors={hasMixedNodeColors}
-        nodeColorApplyTarget={nodeColorApplyTarget}
-        isNodeColorDisabled={isNodeColorDisabled}
-        nodeColorOptions={nodeColorOptions}
-        onNodeColorChange={handleNodeColorChange}
+        showColorControls={showColorControls}
+        colorControlLabel={colorControlLabel}
+        hasMixedColors={hasMixedNodeColors}
+        colorApplyTarget={colorApplyTarget}
+        isColorDisabled={isLocked || !showColorControls}
+        colorOptions={activeColorOptions}
+        onColorChange={handleColorChange}
+        showShapeThickness={Boolean(selectedShape)}
+        shapeThickness={selectedShape?.thickness ?? 1}
+        shapeThicknessMin={shapeThicknessRange.min}
+        shapeThicknessMax={shapeThicknessRange.max}
+        onShapeThicknessChange={handleShapeThicknessChange}
       />
       <MindMapWorkspacePanel
         workspaceStatus={workspaceStatus}

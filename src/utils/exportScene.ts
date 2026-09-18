@@ -1,6 +1,4 @@
 import {
-  ANNOTATION_MIN_WIDTH,
-  ANNOTATION_PADDING_Y,
   CROSS_LINK_COLOR_DARK,
   CROSS_LINK_COLOR_LIGHT,
   CROSS_LINK_CURVE_SCALE,
@@ -24,8 +22,8 @@ import {
 import {
   calculateNodeLabelLayout,
   getAnnotationFont,
-  getAnnotationLineHeight,
   getNodeFont,
+  getNodeVisualMetrics,
   measureAnnotationMetrics,
   type AnnotationMetrics,
   type NodeLabelLayout,
@@ -158,8 +156,17 @@ const measureNodeLayout = (
   const previousFont = context.font
   context.font = getNodeFont(textSize)
   const layout = calculateNodeLabelLayout(context, label, textSize)
+  const resolvedLayout = node.parentId !== null && label.length <= 24
+    ? {
+        lines: [label],
+        width: context.measureText(label).width,
+        height: layout.lineHeight,
+        lineHeight: layout.lineHeight,
+        radius: Math.max(layout.radius, Math.hypot(context.measureText(label).width + 36, layout.lineHeight + 36) / 2),
+      }
+    : layout
   context.font = previousFont
-  return layout
+  return resolvedLayout
 }
 
 const resolveCrossLinkCurve = (
@@ -353,11 +360,13 @@ export const renderMindMapSceneToCanvas = (
   )
 
   if (options.backgroundTheme === 'dark') {
-    gradient.addColorStop(0, 'rgba(79, 70, 229, 0.08)')
-    gradient.addColorStop(1, '#020409')
+    gradient.addColorStop(0, '#10232b')
+    gradient.addColorStop(0.48, '#091116')
+    gradient.addColorStop(1, '#05080c')
   } else {
-    gradient.addColorStop(0, '#fff7ed')
-    gradient.addColorStop(1, '#dbeafe')
+    gradient.addColorStop(0, '#f8fbfc')
+    gradient.addColorStop(0.55, '#f3f7f8')
+    gradient.addColorStop(1, '#e8eff1')
   }
 
   context.fillStyle = gradient
@@ -371,8 +380,11 @@ export const renderMindMapSceneToCanvas = (
     if (shape.kind === 'ring') {
       const radius = Math.max(shape.radius, 0)
       const strokeWidth = Math.max(shape.thickness, 1)
+      const strokeColor = shape.color || RING_DEFAULT_COLOR
+      context.shadowColor = options.backgroundTheme === 'dark' ? strokeColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
       context.lineWidth = strokeWidth
-      context.strokeStyle = shape.color || RING_DEFAULT_COLOR
+      context.strokeStyle = strokeColor
       context.beginPath()
       context.arc(shape.x, shape.y, radius, 0, Math.PI * 2)
       context.stroke()
@@ -384,8 +396,11 @@ export const renderMindMapSceneToCanvas = (
       const radiusX = Math.max(shape.radiusX, 0)
       const radiusY = Math.max(shape.radiusY, 0)
       const strokeWidth = Math.max(shape.thickness, 1)
+      const strokeColor = shape.color || ELLIPSE_DEFAULT_COLOR
+      context.shadowColor = options.backgroundTheme === 'dark' ? strokeColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
       context.lineWidth = strokeWidth
-      context.strokeStyle = shape.color || ELLIPSE_DEFAULT_COLOR
+      context.strokeStyle = strokeColor
       context.beginPath()
       context.ellipse(shape.x, shape.y, radiusX, radiusY, 0, 0, Math.PI * 2)
       context.stroke()
@@ -399,8 +414,11 @@ export const renderMindMapSceneToCanvas = (
       const halfWidth = width / 2
       const halfHeight = height / 2
       const strokeWidth = Math.max(shape.thickness, 1)
+      const strokeColor = shape.color || RECTANGLE_DEFAULT_COLOR
+      context.shadowColor = options.backgroundTheme === 'dark' ? strokeColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
       context.lineWidth = strokeWidth
-      context.strokeStyle = shape.color || RECTANGLE_DEFAULT_COLOR
+      context.strokeStyle = strokeColor
       context.strokeRect(shape.x - halfWidth, shape.y - halfHeight, width, height)
       context.restore()
       return
@@ -409,6 +427,8 @@ export const renderMindMapSceneToCanvas = (
     if (shape.kind === 'arrow') {
       const polygon = buildArrowPolygon(shape)
       const fillColor = shape.color || ARROW_DEFAULT_COLOR
+      context.shadowColor = options.backgroundTheme === 'dark' ? fillColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
       context.lineJoin = 'round'
       context.lineCap = 'round'
       tracePolygon(context, polygon)
@@ -429,8 +449,11 @@ export const renderMindMapSceneToCanvas = (
       const start = rotateAndTranslate({ x: -geometry.halfLength, y: 0 }, center, angle)
       const end = rotateAndTranslate({ x: geometry.halfLength, y: 0 }, center, angle)
       const strokeWidth = Math.max(geometry.halfThickness * 2, LINE_MIN_THICKNESS)
+      const strokeColor = shape.color || LINE_DEFAULT_COLOR
+      context.shadowColor = options.backgroundTheme === 'dark' ? strokeColor : 'rgba(20, 48, 61, 0.12)'
+      context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
       context.lineCap = 'round'
-      context.strokeStyle = shape.color || LINE_DEFAULT_COLOR
+      context.strokeStyle = strokeColor
       context.lineWidth = strokeWidth
       context.beginPath()
       context.moveTo(start.x, start.y)
@@ -445,12 +468,12 @@ export const renderMindMapSceneToCanvas = (
 
   const connectionStrokeStyle =
     options.backgroundTheme === 'dark'
-      ? 'rgba(226, 232, 240, 0.8)'
-      : 'rgba(15, 23, 42, 0.7)'
+      ? 'rgba(151, 184, 199, 0.48)'
+      : 'rgba(51, 83, 98, 0.38)'
 
   context.lineCap = 'round'
   context.lineJoin = 'round'
-  context.lineWidth = 3
+  context.lineWidth = 2
   context.strokeStyle = connectionStrokeStyle
 
   scene.nodes.forEach((node) => {
@@ -493,14 +516,37 @@ export const renderMindMapSceneToCanvas = (
       return
     }
 
-    context.fillStyle = node.color || DEFAULT_NODE_COLOR
+    const nodeColor = node.color || DEFAULT_NODE_COLOR
+    const visual = getNodeVisualMetrics(layout, node.parentId === null)
+    context.save()
+    context.shadowColor =
+      options.backgroundTheme === 'dark' ? nodeColor : 'rgba(20, 48, 61, 0.12)'
+    context.shadowBlur = options.backgroundTheme === 'dark' ? 9 : 6
+    context.fillStyle =
+      options.backgroundTheme === 'dark'
+        ? 'rgba(10, 17, 23, 0.94)'
+        : 'rgba(250, 252, 253, 0.96)'
+    context.strokeStyle = nodeColor
+    context.lineWidth = node.parentId === null ? 3 : 2
     context.beginPath()
-    context.arc(node.x, node.y, layout.radius, 0, Math.PI * 2)
+    if (visual.kind === 'circle') {
+      context.arc(node.x, node.y, layout.radius, 0, Math.PI * 2)
+    } else {
+      context.roundRect(
+        node.x - visual.width / 2,
+        node.y - visual.height / 2,
+        visual.width,
+        visual.height,
+        visual.cornerRadius,
+      )
+    }
     context.fill()
+    context.stroke()
+    context.restore()
 
     const previousFont = context.font
     const nodeTextSize = normalizeTextSize(node.textSize)
-    context.fillStyle = '#ffffff'
+    context.fillStyle = options.backgroundTheme === 'dark' ? '#eef4f8' : '#152631'
     context.font = getNodeFont(nodeTextSize)
     context.textAlign = 'center'
     context.textBaseline = 'middle'
@@ -522,21 +568,8 @@ export const renderMindMapSceneToCanvas = (
   scene.annotations.forEach((annotation) => {
     const metrics = annotationMetrics.get(annotation.id)
     const textSize = normalizeTextSize(annotation.textSize)
-    const width = metrics?.width ?? ANNOTATION_MIN_WIDTH
-    const height =
-      metrics?.height ?? getAnnotationLineHeight(textSize) + ANNOTATION_PADDING_Y * 2
-    const rectX = annotation.x - width / 2
-    const rectY = annotation.y - height / 2
-
-    context.fillStyle = 'rgba(15, 23, 42, 0.78)'
-    context.fillRect(rectX, rectY, width, height)
-
-    context.lineWidth = 1.5
-    context.strokeStyle = 'rgba(148, 163, 184, 0.55)'
-    context.strokeRect(rectX, rectY, width, height)
-
     const previousFont = context.font
-    context.fillStyle = '#f8fafc'
+    context.fillStyle = options.backgroundTheme === 'dark' ? '#eef4f8' : '#152631'
     context.font = metrics?.font ?? getAnnotationFont(textSize)
     context.textAlign = 'center'
     context.textBaseline = 'middle'

@@ -14,6 +14,7 @@ export type ToolbarActionButton = {
   onClick: () => void
   icon: ReactNode
   hiddenLabel: string
+  tone?: 'neutral' | 'cyan' | 'violet' | 'mint' | 'amber' | 'coral'
 }
 
 type TextSizeOption = {
@@ -33,6 +34,7 @@ type MindMapToolbarProps = {
   onToggleCollapse: () => void
   creationActions: ToolbarActionButton[]
   shapeActions: ToolbarActionButton[]
+  showTextControls: boolean
   textEditorLabel: string
   textDraft: string
   onTextChange: ChangeEventHandler<HTMLInputElement>
@@ -47,12 +49,18 @@ type MindMapToolbarProps = {
   textSizeAriaLabel: string
   textSizeTitle?: string
   textSizeOptions: TextSizeOption[]
-  showNodeColorControls: boolean
-  hasMixedNodeColors: boolean
-  nodeColorApplyTarget: string
-  isNodeColorDisabled: boolean
-  nodeColorOptions: NodeColorOption[]
-  onNodeColorChange: (color: string) => void
+  showColorControls: boolean
+  colorControlLabel: string
+  hasMixedColors: boolean
+  colorApplyTarget: string
+  isColorDisabled: boolean
+  colorOptions: NodeColorOption[]
+  onColorChange: (color: string) => void
+  showShapeThickness: boolean
+  shapeThickness: number
+  shapeThicknessMin: number
+  shapeThicknessMax: number
+  onShapeThicknessChange: ChangeEventHandler<HTMLInputElement>
 }
 
 function ChevronIcon({ collapsed }: { collapsed: boolean }) {
@@ -76,6 +84,7 @@ export function MindMapToolbar({
   onToggleCollapse,
   creationActions,
   shapeActions,
+  showTextControls,
   textEditorLabel,
   textDraft,
   onTextChange,
@@ -90,12 +99,18 @@ export function MindMapToolbar({
   textSizeAriaLabel,
   textSizeTitle,
   textSizeOptions,
-  showNodeColorControls,
-  hasMixedNodeColors,
-  nodeColorApplyTarget,
-  isNodeColorDisabled,
-  nodeColorOptions,
-  onNodeColorChange,
+  showColorControls,
+  colorControlLabel,
+  hasMixedColors,
+  colorApplyTarget,
+  isColorDisabled,
+  colorOptions,
+  onColorChange,
+  showShapeThickness,
+  shapeThickness,
+  shapeThicknessMin,
+  shapeThicknessMax,
+  onShapeThicknessChange,
 }: MindMapToolbarProps) {
   const className = `mindmap-toolbar${isCollapsed ? ' mindmap-toolbar--collapsed' : ''}`
 
@@ -103,7 +118,7 @@ export function MindMapToolbar({
     <div className={className}>
       <div className="mindmap-toolbar__header">
         <div className="mindmap-toolbar__toolset">
-          <div className="mindmap-toolbar__quick-actions" role="group" aria-label="Create and link items">
+          <div className="mindmap-toolbar__quick-actions mindmap-toolbar__quick-actions--ideas" role="group" aria-label="Create and link items">
             {creationActions.map((action) => (
               <button
                 key={action.key}
@@ -111,7 +126,7 @@ export function MindMapToolbar({
                 onClick={action.onClick}
                 title={action.title}
                 aria-label={action.ariaLabel}
-                className="mindmap-toolbar__symbol-button"
+                className={`mindmap-toolbar__tool-button mindmap-toolbar__tool-button--${action.tone ?? 'neutral'}`}
                 disabled={action.disabled}
               >
                 {action.icon}
@@ -119,7 +134,7 @@ export function MindMapToolbar({
               </button>
             ))}
           </div>
-          <div className="mindmap-toolbar__quick-actions" role="group" aria-label="Create shapes">
+          <div className="mindmap-toolbar__quick-actions mindmap-toolbar__quick-actions--shapes" role="group" aria-label="Create shapes">
             {shapeActions.map((action) => (
               <button
                 key={action.key}
@@ -127,7 +142,7 @@ export function MindMapToolbar({
                 onClick={action.onClick}
                 title={action.title}
                 aria-label={action.ariaLabel}
-                className="mindmap-toolbar__icon-button"
+                className={`mindmap-toolbar__tool-button mindmap-toolbar__tool-button--${action.tone ?? 'neutral'}`}
                 disabled={action.disabled}
               >
                 {action.icon}
@@ -153,7 +168,7 @@ export function MindMapToolbar({
         <div className="mindmap-toolbar__body" id={toolbarBodyId}>
           <div className="mindmap-toolbar__row mindmap-toolbar__row--editors">
             <div className="mindmap-toolbar__text-editor">
-              <label className="mindmap-toolbar__text-control">
+              {showTextControls ? <label className="mindmap-toolbar__text-control">
                 <span className="mindmap-toolbar__text-label">{textEditorLabel}</span>
                 <input
                   type="text"
@@ -167,8 +182,8 @@ export function MindMapToolbar({
                   ref={textInputRef}
                   title={textInputTitle}
                 />
-              </label>
-              <label className="mindmap-toolbar__text-control">
+              </label> : null}
+              {showTextControls ? <label className="mindmap-toolbar__text-control">
                 <span className="mindmap-toolbar__text-label">Text size</span>
                 <select
                   value={selectedTextSize}
@@ -184,14 +199,14 @@ export function MindMapToolbar({
                     </option>
                   ))}
                 </select>
-              </label>
-              {showNodeColorControls ? (
+              </label> : null}
+              {showColorControls ? (
                 <div className="mindmap-toolbar__text-control mindmap-toolbar__color-control">
                   <span className="mindmap-toolbar__text-label">
-                    {hasMixedNodeColors ? 'Node color (mixed)' : 'Node color'}
+                    {hasMixedColors ? `${colorControlLabel} (mixed)` : colorControlLabel}
                   </span>
-                  <div className="mindmap-toolbar__color-options" role="group" aria-label="Node color">
-                    {nodeColorOptions.map((option) => {
+                  <div className="mindmap-toolbar__color-options" role="group" aria-label={colorControlLabel}>
+                    {colorOptions.map((option) => {
                       const swatchClassName = `mindmap-toolbar__color-swatch${
                         option.isSelected ? ' mindmap-toolbar__color-swatch--selected' : ''
                       }`
@@ -202,26 +217,44 @@ export function MindMapToolbar({
                           type="button"
                           className={swatchClassName}
                           style={{ backgroundColor: option.value }}
-                          onClick={() => onNodeColorChange(option.value)}
+                          onClick={() => onColorChange(option.value)}
                           aria-pressed={option.isSelected}
-                          aria-label={`Apply ${option.label} to ${nodeColorApplyTarget}`}
+                          aria-label={`Apply ${option.label} to ${colorApplyTarget}`}
                           title={
-                            isNodeColorDisabled
+                            isColorDisabled
                               ? 'Unlock edits to change color'
-                              : `Apply ${option.label} to ${nodeColorApplyTarget}`
+                              : `Apply ${option.label} to ${colorApplyTarget}`
                           }
-                          disabled={isNodeColorDisabled}
+                          disabled={isColorDisabled}
                         >
                           <span className="visually-hidden">
                             {option.isSelected
-                              ? `${option.label} selected for ${nodeColorApplyTarget}`
-                              : `Use ${option.label} for ${nodeColorApplyTarget}`}
+                              ? `${option.label} selected for ${colorApplyTarget}`
+                              : `Use ${option.label} for ${colorApplyTarget}`}
                           </span>
                         </button>
                       )
                     })}
                   </div>
                 </div>
+              ) : null}
+              {showShapeThickness ? (
+                <label className="mindmap-toolbar__text-control mindmap-toolbar__thickness-control">
+                  <span className="mindmap-toolbar__text-label">
+                    Stroke <output>{Math.round(shapeThickness)} px</output>
+                  </span>
+                  <input
+                    className="mindmap-toolbar__range"
+                    type="range"
+                    min={shapeThicknessMin}
+                    max={shapeThicknessMax}
+                    step="1"
+                    value={shapeThickness}
+                    onChange={onShapeThicknessChange}
+                    disabled={isColorDisabled}
+                    aria-label="Selected shape stroke width"
+                  />
+                </label>
               ) : null}
             </div>
           </div>

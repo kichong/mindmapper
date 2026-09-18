@@ -1,13 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600&display=swap');
 
 :root {
-  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --font-display: 'Manrope', 'Segoe UI', sans-serif;
+  --font-mono: 'DM Mono', 'SFMono-Regular', Consolas, monospace;
   font-family: var(--font-display);
   line-height: 1.5;
   font-weight: 400;
-  color: #e2e8f0;
-  background-color: #020409;
+  color: #eef4f8;
+  background-color: #05080c;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -25,7 +25,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #020409;
+  background-color: #05080c;
   font-family: var(--font-display);
 }
 

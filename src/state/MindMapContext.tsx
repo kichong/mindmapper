@@ -211,17 +211,24 @@ function loadPersistedState(): MindMapState {
       }
     }
 
-    const selectedAnnotationId =
+    let selectedAnnotationId =
       typeof parsed.selectedAnnotationId === 'string' &&
       annotations.some((annotation) => annotation.id === parsed.selectedAnnotationId)
         ? parsed.selectedAnnotationId
-        : annotations[0]?.id ?? null
+        : null
 
     const selectedShapeId =
       typeof parsed.selectedShapeId === 'string' &&
       shapes.some((shape) => shape.id === parsed.selectedShapeId)
         ? parsed.selectedShapeId
-        : shapes[0]?.id ?? null
+        : null
+
+    if (selectedShapeId) {
+      selectedNodeIds.length = 0
+      selectedAnnotationId = null
+    } else if (selectedAnnotationId) {
+      selectedNodeIds.length = 0
+    }
 
     return {
       nodes: nodes.map((node) => ({ ...node })),

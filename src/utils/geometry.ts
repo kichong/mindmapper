@@ -81,7 +81,7 @@ export const enforceArrowHeadHeights = (rawHalfHeight: number, halfThickness: nu
 
   const shaftHalfHeight = Math.max(
     ARROW_MIN_SHAFT_HALF_HEIGHT,
-    Math.min(halfThickness, headHalfHeight),
+    Math.min(halfThickness, headHalfHeight / ARROW_HEAD_BASE_RATIO),
   )
 
   return { headHalfHeight, shaftHalfHeight }

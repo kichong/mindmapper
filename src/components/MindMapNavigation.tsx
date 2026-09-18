@@ -22,9 +22,13 @@ function DirectionIcon({ direction }: { direction: 'up' | 'down' | 'left' | 'rig
   return (
     <svg className="mindmap-navigation__icon" viewBox="0 0 20 20" aria-hidden="true">
       <path
-        d="M10 4.5 15 10 12.8 10 12.8 15.5 7.2 15.5 7.2 10 5 10 10 4.5Z"
+        d="M10 4.5v11M6.5 8 10 4.5 13.5 8"
         transform={rotations[direction]}
-        fill="currentColor"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
       />
     </svg>
   )

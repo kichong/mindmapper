@@ -36,6 +36,27 @@ export type NodeLabelLayout = {
   radius: number
 }
 
+export type NodeVisualMetrics = {
+  kind: 'circle' | 'capsule'
+  width: number
+  height: number
+  cornerRadius: number
+}
+
+export const getNodeVisualMetrics = (
+  layout: NodeLabelLayout,
+  isRoot: boolean,
+): NodeVisualMetrics => {
+  if (isRoot) {
+    const diameter = layout.radius * 2
+    return { kind: 'circle', width: diameter, height: diameter, cornerRadius: layout.radius }
+  }
+
+  const width = Math.max(88, layout.width + NODE_TEXT_PADDING * 2)
+  const height = Math.max(44, layout.height + 14)
+  return { kind: 'capsule', width, height, cornerRadius: Math.min(18, height / 2) }
+}
+
 export const calculateNodeLabelLayout = (
   context: CanvasRenderingContext2D,
   rawLabel: string,
