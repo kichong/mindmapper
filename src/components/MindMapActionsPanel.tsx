@@ -25,7 +25,6 @@ type MindMapActionsPanelProps = {
   onToggleCollapse: () => void
   toggleTitle: string
   toggleLabel: string
-  toggleIcon: string
   groups: MindMapActionGroup[]
 }
 
@@ -36,7 +35,6 @@ export function MindMapActionsPanel({
   onToggleCollapse,
   toggleTitle,
   toggleLabel,
-  toggleIcon,
   groups,
 }: MindMapActionsPanelProps) {
   const className = `mindmap-actions${isCollapsed ? ' mindmap-actions--collapsed' : ''}`
@@ -55,9 +53,9 @@ export function MindMapActionsPanel({
           aria-expanded={!isCollapsed}
           aria-controls={actionsBodyId}
           title={toggleTitle}
+          aria-label={toggleLabel}
         >
-          <span aria-hidden="true">{toggleIcon}</span>
-          <span className="visually-hidden">{toggleLabel}</span>
+          {isCollapsed ? 'Tools' : 'Hide'}
         </button>
       </div>
       <div id={actionsBodyId} className="mindmap-actions__body" hidden={isCollapsed}>

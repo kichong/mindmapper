@@ -63,21 +63,6 @@ type MindMapToolbarProps = {
   onShapeThicknessChange: ChangeEventHandler<HTMLInputElement>
 }
 
-function ChevronIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg className="mindmap-toolbar__toggle-icon" viewBox="0 0 20 20" aria-hidden="true">
-      <path
-        d={collapsed ? 'M5 7.5 10 12.5 15 7.5' : 'M5 12.5 10 7.5 15 12.5'}
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  )
-}
-
 export function MindMapToolbar({
   isCollapsed,
   toolbarBodyId,
@@ -160,8 +145,7 @@ export function MindMapToolbar({
           aria-label={isCollapsed ? 'Open edit controls' : 'Close edit controls'}
           title={isCollapsed ? 'Open edit controls' : 'Close edit controls'}
         >
-          <span className="mindmap-toolbar__toggle-copy">Edit</span>
-          <ChevronIcon collapsed={isCollapsed} />
+          <span className="mindmap-toolbar__toggle-copy">{isCollapsed ? 'Edit' : 'Done'}</span>
         </button>
       </div>
       {isCollapsed ? null : (

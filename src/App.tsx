@@ -2799,7 +2799,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
         return
       }
 
@@ -3232,7 +3232,6 @@ export default function App() {
   const backgroundButtonTitle = isDarkBackground
     ? 'Switch to a bright background'
     : 'Switch to a deep background'
-  const actionsToggleIcon = areActionsCollapsed ? '▴' : '▾'
   const actionsToggleTitle = areActionsCollapsed ? 'Show edit commands' : 'Hide edit commands'
   const actionsToggleLabel = areActionsCollapsed ? 'Expand edit commands' : 'Collapse edit commands'
   const workspaceStatus = canClear ? 'Map in progress' : 'Fresh canvas'
@@ -3535,7 +3534,6 @@ export default function App() {
           onToggleCollapse={toggleActionsCollapsed}
           toggleTitle={actionsToggleTitle}
           toggleLabel={actionsToggleLabel}
-          toggleIcon={actionsToggleIcon}
           groups={actionGroups}
         />
       </MindMapControlDock>
@@ -3562,11 +3560,7 @@ export default function App() {
         zoomPercentage={zoomPercentage}
         canZoomOut={canZoomOut}
         canZoomIn={canZoomIn}
-        onPanUp={handlePanUp}
-        onPanLeft={handlePanLeft}
         onResetView={handleResetView}
-        onPanRight={handlePanRight}
-        onPanDown={handlePanDown}
         onZoomOut={handleZoomOut}
         onZoomIn={handleZoomIn}
       />

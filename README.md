@@ -56,4 +56,4 @@ Read `llms.txt` for the full contract, coordinate guidance, spacing patterns, an
 ## Responsiveness
 Canvas redraws are coalesced to animation frames, and node label layouts are cached until their text, size, or root status changes. Undo snapshots share immutable document records. Local saving waits 250 ms after an edit burst and flushes on page hide, hidden-tab transitions, and provider teardown.
 
-The tool rail and canvas controls share a bounded dock. Short viewports scroll each panel instead of overlapping it. Shape resizing and thickness editing remain individual operations; group recoloring and deletion each use one undo step.
+The horizontal creation bar and canvas controls share a bounded dock, with labeled Edit/Done and Tools/Hide controls. Narrow viewports scroll the button groups; short viewports scroll the editor instead of overlapping the controls. Shape resizing and thickness editing remain individual operations; group recoloring and deletion each use one undo step.
