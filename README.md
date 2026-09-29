@@ -54,6 +54,6 @@ Read `llms.txt` for the full contract, coordinate guidance, spacing patterns, an
 - Run `npm run lint` and `npm run build` before wrapping up changes.
 
 ## Responsiveness
-Canvas redraws are coalesced to animation frames, and node label layouts are cached until their text, size, or root status changes. Undo snapshots share immutable document records. Local saving waits 250 ms after an edit burst and flushes on page hide, hidden-tab transitions, and provider teardown.
+Canvas redraws are coalesced to animation frames, and node label layouts are cached until their text, size, or root status changes. Undo snapshots share immutable document records. Each browser tab saves to its own local snapshot, including tabs duplicated in the browser. A fresh tab starts with the most recently saved snapshot, and an existing pre-update snapshot remains readable. Local saving waits 250 ms after an edit burst and flushes on page hide, hidden-tab transitions, and provider teardown.
 
 The horizontal creation bar and canvas controls share a bounded dock, with labeled Edit/Done and Tools/Hide controls. Narrow viewports scroll the button groups; short viewports scroll the editor instead of overlapping the controls. Shape resizing and thickness editing remain individual operations; group recoloring and deletion each use one undo step.

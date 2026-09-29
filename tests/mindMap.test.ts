@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { initialState, mindMapReducer as reduce, loadPersistedState } from '../src/state/mindMapReducer'
 import { parseImportedMindMapDocument as parse, serializeMindMapDocument as serialize } from '../src/utils/mindMapDocument'
 import { createShape } from '../src/utils/createShape'
+import { LAST_SNAPSHOT_KEY, tabStorageKey } from '../src/state/tabStorage'
 
 const node = { id: 'old', parentId: null, text: 'Legacy', x: 10, y: -20 }
 const shapeA = createShape('ring', { x: -200, y: 100 }, '#5bc0ce')
@@ -56,6 +57,28 @@ test('empty and shape-only documents import, export and restore from storage', (
     try { assert.deepEqual(loadPersistedState().shapes, shapes) }
     finally { Object.assign(globalThis, { window: oldWindow }) }
   }
+})
+
+test('tab snapshots load independently and legacy storage remains readable', () => {
+  const first = serialize({ nodes: [{ ...node, text: 'First' }], annotations: [], shapes: [], crossLinks: [] })
+  const second = serialize({ nodes: [{ ...node, text: 'Second' }], annotations: [], shapes: [], crossLinks: [] })
+  const saved = new Map([[tabStorageKey('tab-a'), first], [tabStorageKey('tab-b'), second], ['mindmapper:snapshot', first]])
+  let activeTab = 'tab-a'
+  const oldWindow = globalThis.window
+  Object.assign(globalThis, { window: {
+    sessionStorage: { getItem: () => activeTab, setItem: () => {} },
+    localStorage: { getItem: (key: string) => saved.get(key) ?? null },
+  } })
+  try {
+    assert.equal(loadPersistedState().nodes[0].text, 'First')
+    activeTab = 'tab-b'
+    assert.equal(loadPersistedState().nodes[0].text, 'Second')
+    saved.delete(tabStorageKey('tab-b'))
+    saved.set(LAST_SNAPSHOT_KEY, tabStorageKey('tab-a'))
+    assert.equal(loadPersistedState().nodes[0].text, 'First')
+    saved.delete(tabStorageKey('tab-a'))
+    assert.equal(loadPersistedState().nodes[0].text, 'First')
+  } finally { Object.assign(globalThis, { window: oldWindow }) }
 })
 
 test('shape selection validates ids, preserves groups on edits and clears when nodes are selected', () => {

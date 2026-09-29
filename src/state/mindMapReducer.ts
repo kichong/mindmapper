@@ -17,6 +17,9 @@ import {
   type MindMapRing,
   type MindMapShape,
 } from './mindMapModel'
+import { getTabId, tabStorageKey, LAST_SNAPSHOT_KEY, STORAGE_KEY } from './tabStorage'
+
+export { STORAGE_KEY } from './tabStorage'
 
 type MindMapShapeUpdate =
   | Partial<Omit<MindMapRing, 'id' | 'kind'>>
@@ -133,15 +136,17 @@ export const initialState: MindMapState = {
   },
 }
 
-export const STORAGE_KEY = 'mindmapper:snapshot'
-
 export function loadPersistedState(): MindMapState {
   if (typeof window === 'undefined') {
     return initialState
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const tabId = getTabId()
+    const latestKey = window.localStorage.getItem(LAST_SNAPSHOT_KEY)
+    const raw = (tabId && window.localStorage.getItem(tabStorageKey(tabId)))
+      ?? (latestKey && window.localStorage.getItem(latestKey))
+      ?? window.localStorage.getItem(STORAGE_KEY)
     if (!raw) {
       return initialState
     }
