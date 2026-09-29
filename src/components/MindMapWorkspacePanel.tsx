@@ -7,6 +7,8 @@ type KeyboardShortcut = {
 
 type MindMapWorkspacePanelProps = {
   workspaceStatus: string
+  documentName: string
+  onDocumentNameChange: ChangeEventHandler<HTMLInputElement>
   isLocked: boolean
   onImportJson: () => void
   isExportMenuOpen: boolean
@@ -27,6 +29,8 @@ type MindMapWorkspacePanelProps = {
 
 export function MindMapWorkspacePanel({
   workspaceStatus,
+  documentName,
+  onDocumentNameChange,
   isLocked,
   onImportJson,
   isExportMenuOpen,
@@ -72,11 +76,21 @@ export function MindMapWorkspacePanel({
             Export
           </button>
           {isExportMenuOpen ? (
-            <div className="mindmap-io-panel__export-menu" role="menu">
-              <button type="button" onClick={onExportJson} role="menuitem">
+            <div className="mindmap-io-panel__export-menu" role="dialog" aria-label="Export options">
+              <label className="mindmap-io-panel__filename-label" htmlFor="mindmap-export-filename">File name</label>
+              <input
+                id="mindmap-export-filename"
+                className="mindmap-io-panel__filename"
+                type="text"
+                value={documentName}
+                onChange={onDocumentNameChange}
+                placeholder="mindmap"
+                aria-label="Export file name"
+              />
+              <button type="button" onClick={onExportJson}>
                 Export JSON
               </button>
-              <button type="button" onClick={onExportPng} role="menuitem">
+              <button type="button" onClick={onExportPng}>
                 Export PNG
               </button>
             </div>

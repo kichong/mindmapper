@@ -5,6 +5,7 @@ import { initialState, mindMapReducer as reduce, loadPersistedState } from '../s
 import { parseImportedMindMapDocument as parse, serializeMindMapDocument as serialize } from '../src/utils/mindMapDocument'
 import { createShape } from '../src/utils/createShape'
 import { LAST_SNAPSHOT_KEY, tabStorageKey } from '../src/state/tabStorage'
+import { exportFileStem } from '../src/utils/exportFileName'
 
 const node = { id: 'old', parentId: null, text: 'Legacy', x: 10, y: -20 }
 const shapeA = createShape('ring', { x: -200, y: 100 }, '#5bc0ce')
@@ -79,6 +80,13 @@ test('tab snapshots load independently and legacy storage remains readable', () 
     saved.delete(tabStorageKey('tab-a'))
     assert.equal(loadPersistedState().nodes[0].text, 'First')
   } finally { Object.assign(globalThis, { window: oldWindow }) }
+})
+
+test('export names reuse imported stems and stay valid for JSON and PNG', () => {
+  assert.equal(exportFileStem('Project roadmap.json'), 'Project roadmap')
+  assert.equal(exportFileStem('Project roadmap.png'), 'Project roadmap')
+  assert.equal(exportFileStem('bad:/name?.json'), 'badname')
+  assert.equal(exportFileStem('  .json  '), 'mindmap')
 })
 
 test('shape selection validates ids, preserves groups on edits and clears when nodes are selected', () => {

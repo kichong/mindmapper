@@ -26,3 +26,29 @@ export function setTabId(id: string): void {
 export function tabStorageKey(id: string): string {
   return `${STORAGE_KEY}:${id}`
 }
+
+export function documentNameKey(id: string): string {
+  return `mindmapper:filename:${id}`
+}
+
+export function loadDocumentName(): string {
+  try {
+    const id = getTabId()
+    const latest = window.localStorage.getItem(LAST_SNAPSHOT_KEY)
+    const latestId = latest?.startsWith(`${STORAGE_KEY}:`) ? latest.slice(STORAGE_KEY.length + 1) : null
+    return (id && window.localStorage.getItem(documentNameKey(id)))
+      ?? (latestId && window.localStorage.getItem(documentNameKey(latestId)))
+      ?? 'mindmap'
+  } catch {
+    return 'mindmap'
+  }
+}
+
+export function saveDocumentName(name: string): void {
+  try {
+    const id = getTabId()
+    if (id) window.localStorage.setItem(documentNameKey(id), name)
+  } catch (error) {
+    console.error('Failed to save mind map file name', error)
+  }
+}

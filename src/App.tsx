@@ -42,11 +42,8 @@ import {
   ARROW_MIN_HEIGHT,
   ARROW_MIN_THICKNESS,
   ARROW_MIN_WIDTH,
-  CROSS_LINK_COLOR_DARK,
-  CROSS_LINK_COLOR_LIGHT,
   CROSS_LINK_CURVE_SCALE,
   CROSS_LINK_MIN_CURVE_OFFSET,
-  CROSS_LINK_STROKE_WIDTH,
   ELLIPSE_DEFAULT_COLOR,
   ELLIPSE_HIT_PADDING,
   ELLIPSE_MIN_RADIUS_X,
@@ -95,6 +92,9 @@ import {
   tracePolygon,
 } from './utils/geometry'
 import { downloadBlob } from './utils/download'
+import { drawCrossLink } from './utils/drawCrossLink'
+import { exportFileStem } from './utils/exportFileName'
+import { loadDocumentName, saveDocumentName } from './state/tabStorage'
 import {
   parseImportedMindMapDocument,
   serializeMindMapDocument,
@@ -315,6 +315,7 @@ export default function App() {
   const sizeRef = useRef<CanvasSize>({ width: 0, height: 0 })
   const interactionRef = useRef<InteractionState>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [documentName, setDocumentName] = useState(loadDocumentName)
   const textInputRef = useRef<HTMLInputElement | null>(null)
   const pendingTextFocusRef = useRef(false)
   const {
@@ -1057,11 +1058,6 @@ export default function App() {
     })
 
     if (crossLinksToDraw.length > 0) {
-      const crossLinkStrokeStyle =
-        backgroundTheme === 'dark' ? CROSS_LINK_COLOR_DARK : CROSS_LINK_COLOR_LIGHT
-      context.lineWidth = CROSS_LINK_STROKE_WIDTH
-      context.strokeStyle = crossLinkStrokeStyle
-
       crossLinksToDraw.forEach((link) => {
         const source = nodeMap.get(link.sourceId)
         const target = nodeMap.get(link.targetId)
@@ -1127,14 +1123,8 @@ export default function App() {
           y: target.y - endDirection.y * targetLayout.radius,
         }
 
-        context.beginPath()
-        context.moveTo(startPoint.x, startPoint.y)
-        context.quadraticCurveTo(control.x, control.y, endPoint.x, endPoint.y)
-        context.stroke()
+        drawCrossLink(context, { start: startPoint, control, end: endPoint }, backgroundTheme)
       })
-
-      context.lineWidth = connectionLineWidth
-      context.strokeStyle = connectionStrokeStyle
     }
 
     nodesToDraw.forEach((node) => {
@@ -2926,8 +2916,8 @@ export default function App() {
       crossLinks,
     })
     const blob = new Blob([payload], { type: 'application/json' })
-    downloadBlob(blob, 'mindmap.json')
-  }, [annotations, closeExportMenu, crossLinks, nodes, shapes])
+    downloadBlob(blob, `${exportFileStem(documentName)}.json`)
+  }, [annotations, closeExportMenu, crossLinks, documentName, nodes, shapes])
 
   const handleExportPng = useCallback(() => {
     closeExportMenu()
@@ -2952,11 +2942,11 @@ export default function App() {
           window.alert('Unable to export PNG right now. Please try again.')
           return
         }
-        downloadBlob(blob, 'mindmap.png')
+        downloadBlob(blob, `${exportFileStem(documentName)}.png`)
       },
       'image/png',
     )
-  }, [annotations, backgroundTheme, closeExportMenu, crossLinks, nodes, shapes])
+  }, [annotations, backgroundTheme, closeExportMenu, crossLinks, documentName, nodes, shapes])
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -2986,6 +2976,9 @@ export default function App() {
             shapes: parsed.shapes,
             crossLinks: parsed.crossLinks,
           })
+          const name = exportFileStem(file.name)
+          setDocumentName(name)
+          saveDocumentName(name)
         } catch (error) {
           console.error('Failed to import mind map', error)
           window.alert('Unable to import file. Please choose a valid Mindmapper JSON export.')
@@ -3006,6 +2999,12 @@ export default function App() {
     closeShortcutsMenu()
     fileInputRef.current?.click()
   }, [closeExportMenu, closeShortcutsMenu, isLocked])
+
+  const handleDocumentNameChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const name = event.target.value
+    setDocumentName(name)
+    saveDocumentName(name)
+  }, [])
 
   const canDeleteNode = selectedNodes.some(
     (node) => !(node.parentId === null && node.id === ROOT_NODE_ID),
@@ -3539,6 +3538,8 @@ export default function App() {
       </MindMapControlDock>
       <MindMapWorkspacePanel
         workspaceStatus={workspaceStatus}
+        documentName={documentName}
+        onDocumentNameChange={handleDocumentNameChange}
         isLocked={isLocked}
         onImportJson={handleImportJson}
         isExportMenuOpen={isExportMenuOpen}

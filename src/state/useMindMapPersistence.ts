@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { type MindMapState } from './mindMapReducer'
-import { getTabId, newTabId, setTabId, tabStorageKey, LAST_SNAPSHOT_KEY } from './tabStorage'
+import { documentNameKey, getTabId, newTabId, setTabId, tabStorageKey, LAST_SNAPSHOT_KEY } from './tabStorage'
 
 // Serialize only after interaction settles. Page lifecycle events flush the latest
 // committed state, so navigating away before the debounce expires keeps edits.
@@ -37,7 +37,9 @@ export function useMindMapPersistence(state: MindMapState) {
       } else if (message.type === 'occupied') {
         const nextId = newTabId()
         try {
+          const name = window.localStorage.getItem(documentNameKey(tabId.current))
           setTabId(nextId)
+          if (name !== null) window.localStorage.setItem(documentNameKey(nextId), name)
           tabId.current = nextId
           pending.current = true
           flush()

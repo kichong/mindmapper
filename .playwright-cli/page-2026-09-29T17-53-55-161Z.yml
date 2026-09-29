@@ -1,0 +1,37 @@
+- generic [ref=e3]:
+  - generic:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - group "Create and link items" [ref=e8]:
+          - button "Add child idea" [ref=e9] [cursor=pointer]
+          - button "Add new idea" [ref=e15] [cursor=pointer]
+          - button "Create parent-child link" [disabled] [ref=e20]:
+            - generic [ref=e24]: Select two ideas so the first can become the parent of the second
+          - button "Add cross-link" [disabled] [ref=e25]:
+            - generic [ref=e30]: Select two ideas to add a cross-link
+          - button "Add textbox" [ref=e31] [cursor=pointer]
+        - group "Create shapes" [ref=e35]:
+          - button "Add ring" [ref=e36] [cursor=pointer]:
+            - generic [ref=e40]: Ring
+          - button "Add ellipse" [ref=e41] [cursor=pointer]:
+            - generic [ref=e44]: Ellipse
+          - button "Add rectangle" [ref=e45] [cursor=pointer]:
+            - generic [ref=e48]: Rectangle
+          - button "Add arrow" [ref=e49] [cursor=pointer]:
+            - generic [ref=e52]: Arrow
+          - button "Add line" [ref=e53] [cursor=pointer]:
+            - generic [ref=e58]: Line
+      - button "Open edit controls" [ref=e59] [cursor=pointer]:
+        - generic [ref=e60]: Edit
+    - group "Edit commands" [ref=e61]:
+      - button "Expand edit commands" [ref=e63] [cursor=pointer]: Tools
+  - generic [ref=e65]:
+    - button "Import" [ref=e66] [cursor=pointer]
+    - button "Export" [ref=e68] [cursor=pointer]
+    - button "Shortcuts" [ref=e70] [cursor=pointer]
+  - group "Viewport navigation controls" [ref=e71]:
+    - generic [ref=e72]:
+      - button "Center view" [ref=e73] [cursor=pointer]
+      - button "Zoom out" [ref=e77] [cursor=pointer]
+      - generic [ref=e80]: 171%
+      - button "Zoom in" [ref=e81] [cursor=pointer]

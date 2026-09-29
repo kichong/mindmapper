@@ -28,6 +28,7 @@ Read `llms.txt` for the full contract, coordinate guidance, spacing patterns, an
 - Cross-links between any two nodes
 - Keyboard shortcuts for navigation and editing
 - Export to JSON and PNG
+- Import remembers the file name for that tab's JSON and PNG exports; the name can be edited in Export options
 
 ## Source layout
 - `MAP.md`: repo navigation map for fast orientation

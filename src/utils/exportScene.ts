@@ -1,9 +1,7 @@
 import {
-  CROSS_LINK_COLOR_DARK,
-  CROSS_LINK_COLOR_LIGHT,
   CROSS_LINK_CURVE_SCALE,
+  CROSS_LINK_ENDPOINT_RADIUS,
   CROSS_LINK_MIN_CURVE_OFFSET,
-  CROSS_LINK_STROKE_WIDTH,
   LINE_DEFAULT_COLOR,
   LINE_MIN_THICKNESS,
   RING_DEFAULT_COLOR,
@@ -36,6 +34,7 @@ import {
   tracePolygon,
   type Point,
 } from './geometry'
+import { drawCrossLink } from './drawCrossLink'
 
 type Bounds = {
   minX: number
@@ -318,7 +317,7 @@ export const renderMindMapSceneToCanvas = (
     if (!curve) {
       return
     }
-    expandBoundsWithQuadratic(bounds, curve.start, curve.control, curve.end, CROSS_LINK_STROKE_WIDTH / 2)
+    expandBoundsWithQuadratic(bounds, curve.start, curve.control, curve.end, CROSS_LINK_ENDPOINT_RADIUS)
   })
 
   if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.maxX) || !Number.isFinite(bounds.minY) || !Number.isFinite(bounds.maxY)) {
@@ -491,23 +490,13 @@ export const renderMindMapSceneToCanvas = (
   })
 
   if (scene.crossLinks.length > 0) {
-    context.lineWidth = CROSS_LINK_STROKE_WIDTH
-    context.strokeStyle =
-      options.backgroundTheme === 'dark' ? CROSS_LINK_COLOR_DARK : CROSS_LINK_COLOR_LIGHT
-
     scene.crossLinks.forEach((link) => {
       const curve = resolveCrossLinkCurve(link, nodeMap, nodeLayouts)
       if (!curve) {
         return
       }
-      context.beginPath()
-      context.moveTo(curve.start.x, curve.start.y)
-      context.quadraticCurveTo(curve.control.x, curve.control.y, curve.end.x, curve.end.y)
-      context.stroke()
+      drawCrossLink(context, curve, options.backgroundTheme)
     })
-
-    context.lineWidth = 3
-    context.strokeStyle = connectionStrokeStyle
   }
 
   scene.nodes.forEach((node) => {

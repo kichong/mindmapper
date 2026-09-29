@@ -110,11 +110,14 @@ export const LINE_DEFAULT_ANGLE = 0
 
 export const SHAPE_COLOR_OPTIONS = MINDMAP_COLOR_OPTIONS
 
-export const CROSS_LINK_COLOR_LIGHT = '#0ea5e9'
-export const CROSS_LINK_COLOR_DARK = 'rgba(125, 211, 252, 0.85)'
-export const CROSS_LINK_STROKE_WIDTH = 4
-export const CROSS_LINK_MIN_CURVE_OFFSET = 120
-export const CROSS_LINK_CURVE_SCALE = 0.35
+export const CROSS_LINK_COLOR_LIGHT = 'rgba(16, 117, 140, 0.78)'
+export const CROSS_LINK_COLOR_DARK = 'rgba(111, 209, 222, 0.76)'
+export const CROSS_LINK_STROKE_WIDTH = 2.25
+export const CROSS_LINK_DASH_LENGTH = 7
+export const CROSS_LINK_DASH_GAP = 6
+export const CROSS_LINK_ENDPOINT_RADIUS = 3.5
+export const CROSS_LINK_MIN_CURVE_OFFSET = 72
+export const CROSS_LINK_CURVE_SCALE = 0.22
 
 export const NODE_FONT_FAMILY = 'Manrope, system-ui, sans-serif'
 export const ANNOTATION_FONT_FAMILY = 'Manrope, system-ui, sans-serif'
